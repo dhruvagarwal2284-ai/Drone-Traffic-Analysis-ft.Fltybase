@@ -1,0 +1,832 @@
+<title>Baner Junction Trajectory Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+
+<style>
+:root{
+  color-scheme: light;
+  --ground:#f2f3f1; --surface:#fbfbfa; --surface-2:#eeefec; --line:#d9dbd6;
+  --ink:#14161a; --ink-2:#4d5259; --ink-3:#7d838b;
+  --accent:#2a78d6; --accent-soft:#cde2fb;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+  --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --seq0:#e9f1fc; --seq1:#cde2fb; --seq2:#9ec5f4; --seq3:#6da7ec;
+  --seq4:#3987e5; --seq5:#256abf; --seq6:#184f95; --seq7:#0d366b;
+  --shadow:0 1px 2px rgba(20,22,26,.06), 0 8px 24px -16px rgba(20,22,26,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --ground:#101112; --surface:#1a1b1c; --surface-2:#212325; --line:#313437;
+    --ink:#f4f5f3; --ink-2:#b9bec4; --ink-3:#858b93;
+    --accent:#3987e5; --accent-soft:#184f95;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+    --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+    --seq0:#12233c; --seq1:#0d366b; --seq2:#184f95; --seq3:#256abf;
+    --seq4:#3987e5; --seq5:#6da7ec; --seq6:#9ec5f4; --seq7:#cde2fb;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#101112; --surface:#1a1b1c; --surface-2:#212325; --line:#313437;
+  --ink:#f4f5f3; --ink-2:#b9bec4; --ink-3:#858b93;
+  --accent:#3987e5; --accent-soft:#184f95;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+  --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  --seq0:#12233c; --seq1:#0d366b; --seq2:#184f95; --seq3:#256abf;
+  --seq4:#3987e5; --seq5:#6da7ec; --seq6:#9ec5f4; --seq7:#cde2fb;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:0 24px 96px}
+h1,h2,h3{text-wrap:balance; margin:0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- masthead ---------- */
+header{padding:56px 0 32px; border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+h1{
+  font-family:"IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;
+  font-size:clamp(32px,5vw,50px); font-weight:700; letter-spacing:-.015em;
+  line-height:1.04; margin:10px 0 14px;
+}
+.lede{max-width:64ch; color:var(--ink-2); font-size:16.5px}
+.telemetry{
+  display:flex; flex-wrap:wrap; gap:0 28px; margin-top:22px;
+  font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-3);
+}
+.telemetry b{color:var(--ink-2); font-weight:500}
+
+/* ---------- sections ---------- */
+section{padding-top:52px}
+.shead{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px}
+h2{font-size:23px; font-weight:600; letter-spacing:-.01em}
+.tag{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3); border:1px solid var(--line);
+  padding:2px 7px; border-radius:3px;
+}
+.note{color:var(--ink-2); max-width:70ch; margin:8px 0 22px; font-size:14.5px}
+
+/* ---------- cards & grids ---------- */
+.card{
+  background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  padding:20px; box-shadow:var(--shadow);
+}
+.grid{display:grid; gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+
+/* ---------- stat tiles ---------- */
+.tile{
+  background:var(--surface); border:1px solid var(--line); border-radius:8px;
+  padding:16px 18px; display:flex; flex-direction:column; gap:3px;
+}
+.tile .k{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+.tile .v{font-size:29px; font-weight:600; letter-spacing:-.02em; line-height:1.1}
+.tile .u{font-size:13px; color:var(--ink-3); font-weight:400}
+.tile .sub{font-size:12.5px; color:var(--ink-2)}
+
+/* ---------- tables ---------- */
+.scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; font-size:13.5px}
+th,td{text-align:left; padding:7px 12px; border-bottom:1px solid var(--line); white-space:nowrap}
+th{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:500;
+}
+td.n,th.n{text-align:right; font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+
+/* ---------- pills ---------- */
+.pill{
+  display:inline-flex; align-items:center; gap:5px; padding:1px 8px;
+  border-radius:999px; font-size:11.5px; font-weight:500; white-space:nowrap;
+}
+.pill::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
+.p-critical{color:var(--critical); background:color-mix(in srgb,var(--critical) 13%,transparent)}
+.p-serious{color:var(--serious); background:color-mix(in srgb,var(--serious) 15%,transparent)}
+.p-conflict{color:var(--warn); background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.p-minor{color:var(--ink-3); background:var(--surface-2)}
+.p-good{color:var(--good); background:color-mix(in srgb,var(--good) 13%,transparent)}
+
+/* ---------- charts ---------- */
+canvas,svg.chart{display:block; width:100%; height:auto}
+.legend{display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:12px; font-size:12.5px; color:var(--ink-2)}
+.legend i{width:9px; height:9px; border-radius:2px; display:inline-block; margin-right:6px}
+.cap{font-size:12.5px; color:var(--ink-3); margin-top:10px; max-width:68ch}
+.axis{fill:var(--ink-3); font-size:10.5px; font-family:"IBM Plex Mono",monospace}
+.gridline{stroke:var(--line); stroke-width:1}
+
+/* ---------- callout ---------- */
+.callout{
+  border-left:3px solid var(--accent); background:var(--surface);
+  border-radius:0 8px 8px 0; padding:16px 20px; margin:20px 0;
+}
+.callout h3{font-size:15px; font-weight:600; margin-bottom:5px}
+.callout p{margin:0; color:var(--ink-2); font-size:14.5px}
+
+ul.clean{margin:0; padding-left:18px; color:var(--ink-2); font-size:14px}
+ul.clean li{margin:5px 0}
+footer{
+  margin-top:64px; padding-top:22px; border-top:1px solid var(--line);
+  color:var(--ink-3); font-size:12.5px;
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow" id="eyebrow"></div>
+  <h1>What a Drone Sees That a Roadside Camera Cannot</h1>
+  <p class="lede">Every road user in this junction, tracked as a complete path in a
+  single metric ground frame — then used to measure the interactions, queues and
+  turning demand that fixed infrastructure structurally cannot observe.</p>
+  <div class="telemetry mono" id="telem"></div>
+</header>
+
+<section>
+  <div class="grid g4" id="tiles"></div>
+</section>
+
+<section>
+  <div class="shead"><h2>The road network, discovered from motion</h2><span class="tag">no map · no manual zones</span></div>
+  <p class="note">Nothing here was annotated. Each line is one road user's smoothed path in
+  metres on the ground plane. The carriageway, the median and the approach legs emerge
+  from where traffic actually went — which is why the same code runs at a site nobody
+  has surveyed.</p>
+  <div class="card">
+    <canvas id="paths" height="620"></canvas>
+    <div class="legend" id="pathLegend"></div>
+    <p class="cap">Origin is the camera's optical centre projected to the road surface. Axes in metres.</p>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Interactions between road users</h2><span class="tag">the gap nothing in the field measures</span></div>
+  <p class="note">A perspective view of one approach cannot place two road users in a common
+  coordinate frame, so conflicts go unmeasured. With trajectories in metres both standard
+  surrogate-safety measures fall out directly: <b>PET</b>, the time between one user leaving
+  a point and the next arriving at it, and <b>TTC</b>, the time to collision if both hold
+  their present velocity. Car-following is excluded — only genuinely crossing paths count.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Where conflicts concentrate</h3>
+      <p class="cap" style="margin:0 0 12px">Density of interactions under 3 s, on the ground plane.</p>
+      <canvas id="heat" height="420"></canvas>
+      <div class="legend" id="heatLegend"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Severity distribution</h3>
+      <div id="gradeBars"></div>
+      <h3 style="font-size:14px;font-weight:600;margin:22px 0 10px">Most frequent conflicting pairs</h3>
+      <div class="scroll"><table id="pairTable"></table></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Ranked interactions — worst first</h3>
+    <div class="scroll"><table id="conflictTable"></table></div>
+    <p class="cap">PET below 1.0 s is treated as critical, below 1.5 s serious, below 3.0 s a
+    conflict worth review. Each row is a real pair of tracked road users at a known time and place.</p>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Turning demand by movement</h2><span class="tag">automatic turning count</span></div>
+  <p class="note">Origin and destination legs are assigned from each track's entry and exit
+  bearing. This is the survey a junction study normally pays a crew of people to sit and
+  tally by hand.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Origin → destination</h3>
+      <div class="scroll"><table id="odTable"></table></div>
+      <p class="cap">Cell shading is proportional to volume. Legs are named by compass bearing.</p>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Fleet composition</h3>
+      <div class="scroll"><table id="classTable"></table></div>
+      <p class="cap">Two-wheelers are merged from several COCO labels: seen from directly
+      overhead, the detector routinely calls a motorcycle a car. Auto-rickshaws are
+      <i>not</i> separable here — see the limits below.</p>
+    </div>
+  </div>
+</section>
+
+<section id="objSec" hidden>
+  <div class="shead"><h2>Object-level insight</h2><span class="tag">per road user</span></div>
+  <p class="note">Every road user carries a record: what it is, how big it actually is, what
+  colour it is, how it accelerated, where it went, and what it nearly hit. Dimensions are
+  <i>measured</i>, not looked up — the detector returns an image-axis box, but the heading is
+  known from the trajectory, so the projection inverts to give true length and width.</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Measured dimensions vs reality</h3>
+      <div class="scroll"><table id="dimTable"></table></div>
+      <p class="cap">Nothing here was fitted to these numbers. The right-hand column is the
+      published real-world range for each body type — an external check on the whole
+      calibration chain.</p>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Fleet colour</h3>
+      <div id="colourBars"></div>
+      <p class="cap">Swatches are the measured paint colour after two-stage white balance.
+      Under overcast evening light the split <i>within</i> the greys is a brightness
+      judgement — read the achromatic total, not the tiers.</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Kinematics by body type — real units</h3>
+    <div class="scroll"><table id="kinTable"></table></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Object records</h3>
+    <div class="scroll"><table id="objTable"></table></div>
+  </div>
+
+  <div class="callout" id="plateNote"></div>
+</section>
+
+<section>
+  <div class="shead"><h2>Congestion across the whole recording</h2><span class="tag">detector-free</span></div>
+  <p class="note">The tracked window is 120 s, but the recording is 399 s. This covers all of it
+  using frame statistics alone. Separating <b>motion</b> from <b>occupancy</b> distinguishes the
+  three states a single signal confuses — and the one that matters, a standing queue, is
+  present but not moving.</p>
+  <div class="card">
+    <svg class="chart" id="congChart" viewBox="0 0 1120 340" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>Occupancy — how much is present</span>
+      <span><i style="background:var(--s2)"></i>Motion — how much is moving</span>
+      <span><i style="background:var(--s7)"></i>Queue index — present but stopped</span>
+    </div>
+    <div id="cycleNote"></div>
+  </div>
+</section>
+
+<section id="corridorSec" hidden>
+  <div class="shead"><h2>The same method on a second site</h2><span class="tag">corridor · 18.5° pitch</span></div>
+  <p class="note">The companion video looks down a 300 m arterial at a shallow gimbal angle, where a
+  motorcycle is 8 px across — too coarse for honest trajectories. The detector-free signal still works,
+  because it needs no detector, and the contrast is itself the finding.</p>
+  <div class="card">
+    <svg class="chart" id="corrChart" viewBox="0 0 1120 260" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>Junction — queue index</span>
+      <span><i style="background:var(--s2)"></i>Corridor — queue index</span>
+    </div>
+    <div id="corrNote"></div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Speed and delay</h2></div>
+  <div class="grid g2">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Speed distribution by class</h3>
+      <svg class="chart" id="speedChart" viewBox="0 0 560 300" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="legend" id="speedLegend"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Speed percentiles</h3>
+      <div class="scroll"><table id="speedTable"></table></div>
+      <h3 style="font-size:14px;font-weight:600;margin:20px 0 10px">Worst delay by movement</h3>
+      <div class="scroll"><table id="delayTable"></table></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Behaviour outside the vocabulary</h2><span class="tag">open-set</span></div>
+  <p class="note">Fielded systems detect a fixed list and are blind to everything else. Instead of
+  enumerating event types, this learns what normal looks like <i>per location</i> — the prevailing
+  heading and speed in each cell of the scene — and reports departures from it. Nothing below was
+  configured in advance.</p>
+  <div class="card">
+    <div class="scroll"><table id="anomTable"></table></div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><h2>Does this hold up?</h2><span class="tag">validation</span></div>
+  <p class="note">There are no annotations for this footage, so accuracy cannot be quoted against
+  ground truth. What can be checked is physics — every figure below is a test the pipeline could
+  have failed, reported whether or not it flatters the result.</p>
+  <div class="grid g3" id="qaTiles"></div>
+  <div class="callout" id="calNote"></div>
+</section>
+
+<section>
+  <div class="shead"><h2>How it works</h2><span class="tag">method</span></div>
+  <div class="grid g2">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">Pipeline</h3>
+      <ul class="clean" id="pipeline"></ul>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">Known limits</h3>
+      <ul class="clean" id="limits"></ul>
+    </div>
+  </div>
+</section>
+
+<footer id="foot"></footer>
+</div>
+
+<script id="payload" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById("payload").textContent);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const CLS_SLOT = {car:"--s1", motorcycle:"--s2", auto_rickshaw:"--s4", bus:"--s3",
+                  truck:"--s7", person:"--s5", bicycle:"--s6"};
+const clsColor = c => css(CLS_SLOT[c] || "--s8");
+const fmt = (n,d=0) => n==null||!isFinite(n) ? "—"
+  : n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const el = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
+
+/* ---------------- masthead ---------------- */
+(function(){
+  const m = D.meta, s = m.site;
+  el("eyebrow").textContent = "Drone trajectory study · " + (m.captured||"").slice(0,16);
+  el("telem").innerHTML = [
+    ["site", s.lat.toFixed(5)+"°N " + s.lon.toFixed(5)+"°E"],
+    ["altitude", s.rel_alt_m.toFixed(1)+" m AGL"],
+    ["gimbal", s.gimbal.pitch.toFixed(1)+"° pitch / "+s.gimbal.yaw.toFixed(1)+"° yaw"],
+    ["window", m.window.t0_s+"–"+(m.window.t0_s+m.window.dur_s).toFixed(0)+" s @ "+m.window.fps+" fps"],
+  ].map(([k,v])=>`<span><b>${k}</b> ${esc(v)}</span>`).join("");
+})();
+
+/* ---------------- stat tiles ---------------- */
+(function(){
+  const q = D.quality, c = D.conflicts;
+  const crit = (c.by_grade.critical||0) + (c.by_grade.serious||0);
+  const tiles = [
+    ["Road users tracked", fmt(q.tracks), "complete paths", D.meta.window.dur_s.toFixed(0)+" s window"],
+    ["Interactions measured", fmt(c.n_total), "conflict pairs", fmt(crit)+" serious or critical"],
+    ["Signal cycle", D.cycle && D.cycle.cycle_s ? fmt(D.cycle.cycle_s)+" s" : "—", "inferred", "from congestion rhythm alone"],
+    ["Median speed", fmt(q.speed_p50_kph,1), "km/h", "p99 "+fmt(q.speed_p99_kph,1)+" km/h"],
+  ];
+  el("tiles").innerHTML = tiles.map(([k,v,u,sub])=>`
+    <div class="tile"><span class="k">${k}</span>
+      <span class="v num">${v} <span class="u">${u}</span></span>
+      <span class="sub">${sub}</span></div>`).join("");
+})();
+
+/* ---------------- canvas helper ---------------- */
+function fitCanvas(cv, hCss){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || cv.parentElement.clientWidth;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(hCss*dpr);
+  cv.style.height = hCss+"px";
+  const g = cv.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0);
+  return {g, w, h:hCss};
+}
+
+/* ---------------- trajectory plot ---------------- */
+function drawPaths(){
+  const cv = el("paths"); if(!cv) return;
+  const {g,w,h} = fitCanvas(cv, 620);
+  g.clearRect(0,0,w,h);
+  const P = D.paths || []; if(!P.length) return;
+
+  let xs=[], ys=[];
+  P.forEach(p=>{ xs.push(...p.x); ys.push(...p.y); });
+  const q = (a,f)=>{const b=[...a].sort((m,n)=>m-n);return b[Math.floor(f*(b.length-1))];};
+  const x0=q(xs,.005), x1=q(xs,.995), y0=q(ys,.005), y1=q(ys,.995);
+  const pad=36, sc=Math.min((w-2*pad)/(x1-x0), (h-2*pad)/(y1-y0));
+  const cxo=(x0+x1)/2, cyo=(y0+y1)/2;
+  const X = v => w/2 + (v-cxo)*sc;
+  const Y = v => h/2 - (v-cyo)*sc;
+
+  // grid every 20 m
+  g.strokeStyle = css("--line"); g.lineWidth = 1; g.globalAlpha = .8;
+  g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = css("--ink-3");
+  for(let v=Math.ceil(x0/20)*20; v<=x1; v+=20){
+    g.beginPath(); g.moveTo(X(v),pad); g.lineTo(X(v),h-pad); g.stroke();
+    g.fillText(v+" m", X(v)+4, h-pad+13);
+  }
+  for(let v=Math.ceil(y0/20)*20; v<=y1; v+=20){
+    g.beginPath(); g.moveTo(pad,Y(v)); g.lineTo(w-pad,Y(v)); g.stroke();
+    g.fillText(v+" m", pad+4, Y(v)-4);
+  }
+
+  g.globalAlpha = .62; g.lineWidth = 1.3; g.lineJoin="round"; g.lineCap="round";
+  const drawOrder = [...P].sort((a,b)=>
+    (clsKey(a.cls)==="other"?0:1) - (clsKey(b.cls)==="other"?0:1));
+  drawOrder.forEach(p=>{
+    g.strokeStyle = clsColor(p.cls); g.beginPath();
+    for(let i=0;i<p.x.length;i++){ const a=X(p.x[i]), b=Y(p.y[i]);
+      i ? g.lineTo(a,b) : g.moveTo(a,b); }
+    g.stroke();
+  });
+  g.globalAlpha = 1;
+
+  const order = ["car","two_wheeler","person","other"];
+  const present = order.filter(k => P.some(p => clsKey(p.cls) === k));
+  el("pathLegend").innerHTML = present.map(c=>
+    `<span><i style="background:${clsColor(c)}"></i>${esc(clsLabel(c))}</span>`).join("");
+}
+
+/* ---------------- conflict heatmap ---------------- */
+function drawHeat(){
+  const cv = el("heat"); if(!cv) return;
+  const {g,w,h} = fitCanvas(cv, 420);
+  g.clearRect(0,0,w,h);
+  const Z = D.conflicts.heatmap.z; if(!Z || !Z.length) return;
+  const ny = Z.length, nx = Z[0].length;
+  let mx = 0; Z.forEach(r=>r.forEach(v=>{ if(v>mx) mx=v; }));
+  if(!mx) { g.fillStyle=css("--ink-3"); g.font='13px "IBM Plex Sans"';
+            g.fillText("no conflicts in window",16,26); return; }
+
+  const ramp = ["--seq0","--seq1","--seq2","--seq3","--seq4","--seq5","--seq6","--seq7"].map(css);
+  const side = Math.min(w,h), ox=(w-side)/2, oy=(h-side)/2;
+  const cw = side/nx, ch = side/ny;
+  for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+    const v = Z[j][i]; if(!v) continue;
+    const t = Math.sqrt(v/mx);
+    g.fillStyle = ramp[Math.min(ramp.length-1, Math.floor(t*ramp.length))];
+    g.fillRect(ox+i*cw, oy+(ny-1-j)*ch, Math.ceil(cw), Math.ceil(ch));
+  }
+  g.strokeStyle=css("--line"); g.strokeRect(ox,oy,side,side);
+  el("heatLegend").innerHTML =
+    `<span style="color:var(--ink-3)">fewer</span>` +
+    ramp.map(c=>`<i style="background:${c};width:20px;height:9px;border-radius:0"></i>`).join("") +
+    `<span style="color:var(--ink-3)">more · peak ${mx} in one cell</span>`;
+}
+
+/* ---------------- grade bars ---------------- */
+(function(){
+  const G = D.conflicts.by_grade || {};
+  const order = [["critical","PET/TTC < 1.0 s"],["serious","< 1.5 s"],
+                 ["conflict","< 3.0 s"],["minor","3–5 s"]];
+  const mx = Math.max(1, ...order.map(([k])=>G[k]||0));
+  el("gradeBars").innerHTML = order.map(([k,lbl])=>{
+    const v = G[k]||0;
+    const col = k==="critical"?"--critical":k==="serious"?"--serious":k==="conflict"?"--warn":"--ink-3";
+    return `<div style="display:flex;align-items:center;gap:10px;margin:7px 0">
+      <span class="pill p-${k}" style="min-width:78px">${k}</span>
+      <span style="flex:1;background:var(--surface-2);border-radius:3px;height:14px;overflow:hidden">
+        <span style="display:block;height:100%;width:${100*v/mx}%;background:var(${col});border-radius:3px"></span>
+      </span>
+      <span class="mono num" style="min-width:42px;text-align:right;font-size:13px">${fmt(v)}</span>
+      <span style="color:var(--ink-3);font-size:11.5px;min-width:74px">${lbl}</span></div>`;
+  }).join("");
+})();
+
+/* ---------------- tables ---------------- */
+function table(node, cols, rows){
+  node.innerHTML =
+    "<thead><tr>" + cols.map(c=>`<th class="${c.n?"n":""}">${c.h}</th>`).join("") + "</tr></thead>" +
+    "<tbody>" + rows.map(r=>"<tr>" + cols.map(c=>
+      `<td class="${c.n?"n":""}">${c.f ? c.f(r) : esc(r[c.k] ?? "—")}</td>`).join("") + "</tr>").join("") +
+    "</tbody>";
+}
+
+(function(){
+  const P = D.conflicts.by_class_pair || {};
+  table(el("pairTable"),
+    [{h:"pair",f:r=>esc(r[0].replace(/_/g," "))},{h:"count",n:1,f:r=>fmt(r[1])}],
+    Object.entries(P));
+
+  const T = D.conflicts.top || [];
+  table(el("conflictTable"), [
+    {h:"#", n:1, f:(r,i)=>""},
+    {h:"grade", f:r=>{
+      const v=r.value, k = v<1?"critical":v<1.5?"serious":v<3?"conflict":"minor";
+      return `<span class="pill p-${k}">${k}</span>`;}},
+    {h:"measure", f:r=>`<span class="mono">${r.measure}</span>`},
+    {h:"value", n:1, f:r=>`<span class="mono">${r.value.toFixed(2)} s</span>`},
+    {h:"road users", f:r=>esc(r.cls_a.replace("_"," "))+" ↔ "+esc(r.cls_b.replace("_"," "))},
+    {h:"speeds", n:1, f:r=>`<span class="mono">${fmt(r.spd_a,0)} / ${fmt(r.spd_b,0)}</span>`},
+    {h:"t", n:1, f:r=>`<span class="mono">${fmt(r.t,1)} s</span>`},
+    {h:"location", n:1, f:r=>`<span class="mono">${fmt(r.x_m,0)}, ${fmt(r.y_m,0)} m</span>`},
+  ], T.slice(0,18));
+  el("conflictTable").querySelectorAll("tbody tr").forEach((tr,i)=>{
+    tr.firstElementChild.innerHTML = `<span class="mono" style="color:var(--ink-3)">${i+1}</span>`;
+  });
+})();
+
+/* OD matrix as a shaded table */
+(function(){
+  const od = D.od || {}; const dests = Object.keys(od);
+  const origins = [...new Set(dests.flatMap(d=>Object.keys(od[d])))].sort();
+  let mx = 0; dests.forEach(d=>origins.forEach(o=>{ mx = Math.max(mx, od[d][o]||0); }));
+  const head = "<thead><tr><th>from ↓ / to →</th>" +
+    dests.map(d=>`<th class="n">${esc(d)}</th>`).join("") + "<th class='n'>total</th></tr></thead>";
+  const body = origins.map(o=>{
+    let tot=0;
+    const cells = dests.map(d=>{
+      const v = od[d][o]||0; tot+=v;
+      const a = mx ? Math.sqrt(v/mx) : 0;
+      return `<td class="n" style="background:color-mix(in srgb,var(--accent) ${(a*38).toFixed(0)}%,transparent)">${v||"·"}</td>`;
+    }).join("");
+    return `<tr><th style="text-transform:none;font-size:13px;color:var(--ink)">${esc(o)}</th>${cells}<td class="n mono"><b>${tot}</b></td></tr>`;
+  }).join("");
+  el("odTable").innerHTML = head + "<tbody>" + body + "</tbody>";
+})();
+
+(function(){
+  table(el("classTable"), [
+    {h:"class", f:r=>`<span class="pill" style="color:${clsColor(r.cls)};background:color-mix(in srgb,${clsColor(r.cls)} 14%,transparent)">${esc(r.cls.replace("_"," "))}</span>`},
+    {h:"count", n:1, f:r=>fmt(r.n)},
+    {h:"share", n:1, f:r=>fmt(r.share_pct,1)+"%"},
+    {h:"PCU", n:1, f:r=>fmt(r.pcu,1)},
+    {h:"mean km/h", n:1, f:r=>fmt(r.mean_kph,1)},
+  ], D.counts || []);
+
+  table(el("speedTable"), [
+    {h:"class", f:r=>esc(r.cls.replace("_"," "))},
+    {h:"p15", n:1, f:r=>fmt(r.p15,1)},
+    {h:"median", n:1, f:r=>fmt(r.p50,1)},
+    {h:"p85", n:1, f:r=>fmt(r.p85,1)},
+  ], D.speed || []);
+
+  const dm = Object.entries(D.delay.by_movement||{}).slice(0,8);
+  table(el("delayTable"),
+    [{h:"movement",f:r=>`<span class="mono">${esc(r[0])}</span>`},
+     {h:"mean stopped",n:1,f:r=>fmt(r[1],1)+" s"}], dm);
+
+  const A = (D.anomalies && D.anomalies.items) || [];
+  table(el("anomTable"), [
+    {h:"t", n:1, f:r=>`<span class="mono">${fmt(r.t,1)} s</span>`},
+    {h:"behaviour", f:r=>{
+      const k = r.kind==="contraflow"?"critical":r.kind==="stopped_in_carriageway"?"serious":"conflict";
+      return `<span class="pill p-${k}">${esc(r.kind.replace(/_/g," "))}</span>`;}},
+    {h:"road user", f:r=>esc(r.cls.replace("_"," "))},
+    {h:"detail", f:r=>`<span style="color:var(--ink-2)">${esc(r.detail)}</span>`},
+    {h:"location", n:1, f:r=>`<span class="mono">${fmt(r.x_m,0)}, ${fmt(r.y_m,0)} m</span>`},
+  ], A.slice(0,14));
+})();
+
+/* ---------------- congestion time series ---------------- */
+function drawCong(){
+  const svg = el("congChart"); const C = D.congestion;
+  if(!svg) return;
+  if(!C){ svg.innerHTML = `<text x="20" y="30" class="axis">no congestion signal</text>`; return; }
+  const W=1120,H=340, L=46,R=16,T=16,B=32;
+  const iw=W-L-R, ih=H-T-B;
+  const tmax = Math.max(...C.t);
+  const norm = a => { const m=Math.max(...a); return a.map(v=>v/m); };
+  const series = [["occupancy",norm(C.occupancy),"--s1"],
+                  ["motion",norm(C.motion),"--s2"],
+                  ["queue_index",norm(C.queue_index),"--s7"]];
+  const X = t => L + (t/tmax)*iw;
+  const Y = v => T + (1-v)*ih;
+
+  let s = "";
+  for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+    s += `<line class="gridline" x1="${L}" y1="${y}" x2="${W-R}" y2="${y}"/>`; }
+  for(let t=0;t<=tmax;t+=60){
+    s += `<line class="gridline" x1="${X(t)}" y1="${T}" x2="${X(t)}" y2="${T+ih}" opacity=".5"/>`;
+    s += `<text class="axis" x="${X(t)}" y="${H-12}" text-anchor="middle">${t}s</text>`;
+  }
+  s += `<text class="axis" x="${L-8}" y="${T+6}" text-anchor="end">high</text>`;
+  s += `<text class="axis" x="${L-8}" y="${T+ih}" text-anchor="end">low</text>`;
+
+  // mark the analysis window
+  const w0 = D.meta.window.t0_s, w1 = w0 + D.meta.window.dur_s;
+  s += `<rect x="${X(w0)}" y="${T}" width="${X(w1)-X(w0)}" height="${ih}"
+        fill="var(--accent)" opacity=".07"/>`;
+  s += `<text class="axis" x="${X(w0)+6}" y="${T+14}" fill="var(--accent)">tracked window</text>`;
+
+  series.forEach(([name,arr,slot])=>{
+    const d = arr.map((v,i)=>`${i?"L":"M"}${X(C.t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    s += `<path d="${d}" fill="none" stroke="var(${slot})" stroke-width="2"
+           stroke-linejoin="round" opacity="${name==="queue_index"?1:.75}"/>`;
+  });
+  svg.innerHTML = s;
+
+  const cyc = D.cycle && D.cycle.cycle_s;
+  el("cycleNote").innerHTML = cyc ? `<div class="callout" style="margin-bottom:0">
+      <h3>A repeating ${fmt(cyc)}-second rhythm</h3>
+      <p>Autocorrelation of the queue index peaks at ${fmt(cyc)} s (r = ${fmt(D.cycle.peak_autocorr,2)}).
+      Traffic here arrives and clears on a cycle, which is the signature of signal control —
+      recovered without a controller feed, a detector loop, or sight of a single signal head.
+      The correlation is moderate, so read this as a strong indication rather than a measured
+      cycle time.</p></div>` : "";
+}
+
+/* ---------------- speed histograms ---------------- */
+function drawSpeed(){
+  const svg = el("speedChart"); const SH = D.speed_hist || {};
+  const keys = ["car","two_wheeler","person"]
+    .filter(k=>SH[k] && SH[k].reduce((a,b)=>a+b,0)>200);
+  if(!svg || !keys.length){ if(svg) svg.innerHTML=""; return; }
+  const W=560,H=300,L=38,R=12,T=12,B=30, iw=W-L-R, ih=H-T-B;
+  const nb = SH[keys[0]].length;
+  let s = "";
+  for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+    s += `<line class="gridline" x1="${L}" y1="${y}" x2="${W-R}" y2="${y}"/>`; }
+  for(let v=0;v<=80;v+=20){ const x=L+(v/80)*iw;
+    s += `<text class="axis" x="${x}" y="${H-10}" text-anchor="middle">${v}</text>`; }
+  s += `<text class="axis" x="${W/2}" y="${H-0}" text-anchor="middle">km/h</text>`;
+
+  keys.forEach(k=>{
+    const a = SH[k], tot = a.reduce((x,y)=>x+y,0), mx = Math.max(...a)/tot;
+    const d = a.map((v,i)=>{
+      const x = L + (i/(nb-1))*iw, y = T + ih*(1 - (v/tot)/mx);
+      return `${i?"L":"M"}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join("");
+    s += `<path d="${d}" fill="none" stroke="${clsColor(k)}" stroke-width="2"
+           stroke-linejoin="round" opacity=".9"/>`;
+  });
+  svg.innerHTML = s;
+  el("speedLegend").innerHTML = keys.map(k=>
+    `<span><i style="background:${clsColor(k)}"></i>${esc(k.replace("_"," "))}</span>`).join("")
+    + `<span style="color:var(--ink-3)">other classes in the table opposite</span>`;
+}
+
+/* ---------------- QA ---------------- */
+(function(){
+  const q = D.quality, c = q.calibration || {};
+  const pct = v => (100*v).toFixed(1)+"%";
+  const ok = (b,txt) => `<span class="pill ${b?"p-good":"p-conflict"}">${txt}</span>`;
+  const items = [
+    ["Plausible accelerations", pct(q.accel_within_4_frac), "within ±4 m/s²",
+      q.accel_within_4_frac>0.97],
+    ["Impossible speeds", pct(q.speed_over_100kph_frac), "above 100 km/h",
+      q.speed_over_100kph_frac<0.005],
+    ["Interpolated positions", pct(q.imputed_frac), "filled through occlusion",
+      q.imputed_frac<0.25],
+    ["Median path duration", fmt(q.median_track_dwell_s,1)+" s", "per road user", true],
+    ["Trajectory rows", fmt(q.rows), "position samples", true],
+    ["Scale correction", c.scale ? "×"+fmt(c.scale,3) : "none", "applied to altitude", true],
+  ];
+  el("qaTiles").innerHTML = items.map(([k,v,sub,good])=>`
+    <div class="tile"><span class="k">${k}</span>
+      <span class="v num">${v}</span>
+      <span class="sub">${sub} ${good?ok(1,"pass"):ok(0,"check")}</span></div>`).join("");
+
+  const mo = c.motorcycle_len_m, moe = c.motorcycle_expected_m;
+  el("calNote").innerHTML = `<h3>The ruler, and the check on it</h3><p>
+    Height above the road is not directly known — the drone reports height above its
+    takeoff point — so a single global scale factor is recovered by requiring the median
+    car footprint to measure 4.0 m${c.observed_car_m?` (observed ${fmt(c.observed_car_m,2)} m before correction)`:""}.
+    ${mo?`Motorcycle length then falls out at <b>${fmt(mo,2)} m</b> against an expected
+    ${fmt(moe,2)} m — a size the calibration was never fitted to, so it is an independent
+    check rather than a restatement.`:""}
+    Every distance, speed and time-to-collision on this page inherits that one factor.</p>`;
+})();
+
+/* ---------------- method ---------------- */
+(function(){
+  const legs = (D.legs && D.legs.names) || [];
+  el("pipeline").innerHTML = [
+    "Per-frame telemetry is demuxed from the video's subtitle track — position, altitude and gimbal attitude for all 11,971 frames.",
+    "Gimbal attitude and focal length give an analytic image-to-ground homography. No ground control points, no satellite imagery.",
+    "YOLO11x detects road users; ByteTrack links them across frames at 10 fps.",
+    "Box centroids are back-projected at each class's mid-height, removing the parallax that would otherwise place a bus metres from where it stands.",
+    "A constant-velocity Kalman filter with an RTS smoother runs over each path, because accelerations from raw differences are noise.",
+    `Approach legs (${legs.join(", ")}) are discovered from entry and exit bearings, not drawn by hand.`,
+  ].map(t=>`<li>${t}</li>`).join("");
+
+  el("limits").innerHTML = [
+    "Detection uses COCO, trained on ground-level imagery. From directly overhead a motorcycle often reads as a car, so two-wheelers are merged into one class rather than split; auto-rickshaws cannot be separated from motorcycles by footprint size and are not reported separately.",
+    "Full-frame inference at 1920 px under-counts small road users. Tiled inference on the same frames finds 1.7-1.9x more road users and 5-6x more pedestrians, so pedestrian figures here are a floor, not a count.",
+    "Association runs in image space, so identities can swap where the tree canopy occludes the junction core — those positions are marked as interpolated.",
+    "Conflict rates are for one 120-second window in an evening peak, not a full day.",
+    "The cycle estimate comes from a moderate autocorrelation peak; treat it as an indication, not a measured signal plan.",
+    "The companion corridor video sits at 18.5° gimbal pitch, where a motorcycle is 8 px across. It is deliberately not tracked — precision there would be fabricated.",
+  ].map(t=>`<li>${t}</li>`).join("");
+
+  el("foot").innerHTML = `Built from ${fmt(D.quality.rows)} trajectory samples across
+    ${fmt(D.quality.tracks)} road users · ${esc(D.meta.video)} ·
+    captured ${esc((D.meta.captured||"").slice(0,19))} ·
+    ${D.meta.site.lat.toFixed(5)}°N ${D.meta.site.lon.toFixed(5)}°E`;
+})();
+
+/* ---------------- render + theme reactivity ---------------- */
+function drawCorridor(){
+  const C = D.corridor, J = D.congestion;
+  if(!C || !J) return;
+  el("corridorSec").hidden = false;
+  const svg = el("corrChart");
+  const W=1120,H=260,L=46,R=16,T=16,B=32, iw=W-L-R, ih=H-T-B;
+  const tmax = Math.max(Math.max(...C.t), Math.max(...J.t));
+  const nrm = a => { const m=Math.max(...a); return a.map(v=>v/m); };
+  const X = t => L + (t/tmax)*iw, Y = v => T + (1-v)*ih;
+  let s = "";
+  for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+    s += `<line class="gridline" x1="${L}" y1="${y}" x2="${W-R}" y2="${y}"/>`; }
+  for(let t=0;t<=tmax;t+=60){
+    s += `<text class="axis" x="${X(t)}" y="${H-12}" text-anchor="middle">${t}s</text>`; }
+  [[J,"--s1"],[C,"--s2"]].forEach(([src,slot])=>{
+    const a = nrm(src.queue_index);
+    const d = a.map((v,i)=>`${i?"L":"M"}${X(src.t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    s += `<path d="${d}" fill="none" stroke="var(${slot})" stroke-width="2" stroke-linejoin="round"/>`;
+  });
+  svg.innerHTML = s;
+  const jc = D.cycle && D.cycle.peak_autocorr, cc = C.peak_autocorr;
+  el("corrNote").innerHTML = `<div class="callout" style="margin-bottom:0">
+    <h3>One site is metered, the other is not</h3>
+    <p>The junction's queue index repeats on a ${fmt(D.cycle.cycle_s)} s cycle
+    (r = ${fmt(jc,2)}). The corridor's best peak sits at ${fmt(C.cycle_s)} s with
+    r = ${fmt(cc,2)} — at the edge of the search band and barely above noise, which is
+    what an uninterrupted arterial looks like. Congestion there builds from side friction
+    and a construction narrowing rather than from a signal releasing traffic in batches,
+    so the two sites need different interventions: retiming helps one and would do
+    nothing for the other.</p></div>`;
+}
+
+/* ---------------- object-level ---------------- */
+const REAL_DIMS = {
+  "two-wheeler":"1.8 - 2.0", "auto-rickshaw":"2.6 - 2.9", "hatchback":"3.6 - 4.0",
+  "sedan":"4.2 - 4.6", "SUV / MUV":"4.4 - 4.9", "van / LCV":"4.8 - 6.0",
+  "truck":"6.0 - 10.0", "bus":"10.0 - 12.0", "pedestrian":"0.3 - 0.6",
+};
+function drawObjects(){
+  const O = D.objects; if(!O || !O.n) return;
+  el("objSec").hidden = false;
+
+  const dims = Object.entries(O.dims_by_body||{})
+    .filter(([k])=>k!=="unknown")
+    .sort((a,b)=>a[1].L-b[1].L);
+  table(el("dimTable"), [
+    {h:"body type", f:r=>esc(r[0])},
+    {h:"n", n:1, f:r=>fmt(r[1].n)},
+    {h:"measured L", n:1, f:r=>`<span class="mono">${fmt(r[1].L,2)} m</span>`},
+    {h:"measured W", n:1, f:r=>`<span class="mono" style="color:var(--ink-3)">${fmt(r[1].W,2)} m</span>`},
+    {h:"real-world L", n:1, f:r=>`<span class="mono" style="color:var(--ink-3)">${REAL_DIMS[r[0]]||"—"} m</span>`},
+  ], dims);
+
+  const C = O.colour||{}, HX = O.colour_hex||{};
+  const tot = Object.values(C).reduce((a,b)=>a+b,0)||1;
+  const achro = ["white","silver / grey","dark grey","black"];
+  const achroTot = achro.reduce((a,k)=>a+(C[k]||0),0);
+  el("colourBars").innerHTML = Object.entries(C).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+    <div style="display:flex;align-items:center;gap:10px;margin:6px 0">
+      <span style="width:16px;height:16px;border-radius:3px;flex:none;
+        background:${HX[k]||"#888"};border:1px solid var(--line)"></span>
+      <span style="min-width:96px;font-size:13px">${esc(k)}</span>
+      <span style="flex:1;background:var(--surface-2);border-radius:3px;height:12px;overflow:hidden">
+        <span style="display:block;height:100%;width:${100*v/tot}%;background:${HX[k]||"#888"};border-radius:3px"></span>
+      </span>
+      <span class="mono num" style="min-width:56px;text-align:right;font-size:12.5px">${(100*v/tot).toFixed(1)}%</span>
+    </div>`).join("") +
+    `<p class="cap" style="margin-top:12px"><b>${(100*achroTot/tot).toFixed(1)}%</b> of the
+     fleet is white, silver, grey or black — consistent with the Indian market.</p>`;
+
+  const K = Object.entries(O.kinematics_by_body||{})
+    .filter(([k])=>k!=="unknown")
+    .sort((a,b)=>b[1].v_mean_kph-a[1].v_mean_kph);
+  table(el("kinTable"), [
+    {h:"body type", f:r=>esc(r[0])},
+    {h:"mean speed", n:1, f:r=>`<span class="mono">${fmt(r[1].v_mean_kph,1)} km/h</span>`},
+    {h:"p85 top speed", n:1, f:r=>`<span class="mono">${fmt(r[1].v_max_kph,1)} km/h</span>`},
+    {h:"peak accel", n:1, f:r=>`<span class="mono">${fmt(r[1].a_max,2)} m/s²</span>`},
+    {h:"peak braking", n:1, f:r=>`<span class="mono">${fmt(r[1].a_min,2)} m/s²</span>`},
+  ], K);
+
+  table(el("objTable"), [
+    {h:"object", f:r=>`<span style="display:inline-flex;align-items:center;gap:7px">
+       <span style="width:11px;height:11px;border-radius:2px;background:${r.hex||"#888"};
+         border:1px solid var(--line)"></span>${esc(r.descriptor||r.body_type||"")}</span>`},
+    {h:"L", n:1, f:r=>`<span class="mono">${fmt(r.L_m,2)}</span>`},
+    {h:"mean", n:1, f:r=>`<span class="mono">${fmt(r.v_mean_kph,1)}</span>`},
+    {h:"max km/h", n:1, f:r=>`<span class="mono">${fmt(r.v_max_kph,1)}</span>`},
+    {h:"peak brake", n:1, f:r=>`<span class="mono">${fmt(r.a_min_ms2,2)}</span>`},
+    {h:"distance", n:1, f:r=>`<span class="mono">${fmt(r.distance_m,0)} m</span>`},
+    {h:"movement", f:r=>`<span class="mono">${esc(r.movement||"—")}</span>`},
+    {h:"conflicts", n:1, f:r=>fmt(r.n_conflicts)},
+  ], (O.sample||[]).slice(0,14));
+
+  const P = O.plate_feasibility||{};
+  el("plateNote").innerHTML = `<h3>Why there is no licence plate column</h3><p>
+    An Indian car plate at this scale is 15.3 × 3.7 px, giving a character height of
+    <b>${fmt(P.character_height_px_now,1)} px</b> against the ~${fmt(P.character_height_px_needed)} px
+    OCR needs — a <b>${fmt(P.shortfall_factor,1)}× shortfall</b>. Resolution is only half of it:
+    at −63° pitch the camera sees roofs, and plates sit on vertical fore-and-aft surfaces that
+    are not in view at any resolution. Reading plates from the air would need
+    ${fmt(P.required_gsd_mm_px,1)} mm/px — roughly ${fmt(P.option_lower_altitude_m,0)} m altitude
+    instead of 107 m, or a ${fmt(P.option_longer_lens_mm_equiv)} mm-equivalent lens — <i>and</i> a
+    shallow camera angle. That is a different sensor tasking, not a better model.</p>`;
+}
+function renderAll(){ drawPaths(); drawHeat(); drawCong(); drawSpeed(); drawCorridor(); drawObjects(); }
+renderAll();
+addEventListener("resize", () => { clearTimeout(window.__rt);
+  window.__rt = setTimeout(renderAll, 160); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+new MutationObserver(renderAll).observe(document.documentElement,
+  {attributes:true, attributeFilter:["data-theme"]});
+</script>

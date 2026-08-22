@@ -1,0 +1,10 @@
+# PyTorch: Blackwell (sm_120) needs CUDA 12.8 wheels -- install first:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+torch>=2.7
+torchvision
+ultralytics>=8.3
+opencv-python>=4.10
+numpy>=2.0
+pandas>=2.2
+pyarrow>=17
+scipy>=1.14

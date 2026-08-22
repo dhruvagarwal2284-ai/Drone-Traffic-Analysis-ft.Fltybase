@@ -1,0 +1,27 @@
+# Source footage -- 11.4 GB, supplied with the challenge, never committed
+*.MP4
+*.mp4
+!demo/*.mp4
+
+# Model weights -- fetched at setup time, see models/README.md
+*.pt
+*.onnx
+
+# Working outputs. The shareable results are mirrored into demo/ by
+# make_package.sh; out/ holds the large intermediates (a 400 MB window video,
+# raw detections) and is reproducible from the pipeline.
+out/
+
+# Build artefact
+traffic-analysis-agent.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db

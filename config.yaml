@@ -1,0 +1,34 @@
+# Traffic Analysis Agent -- run configuration
+video:
+  intersection: Intersection_Merged-002.MP4   # primary: -63.1 deg pitch, 2.6 cm/px
+  corridor:     Multi_Road_Merged-001.MP4     # secondary: -18.5 deg pitch, 23.5 cm/px
+
+window:
+  t0_s: 240.0        # analysis window start (captures queue build + discharge)
+  dur_s: 120.0
+  fps: 10.0          # 0.1 s resolution; ample for PET/TTC
+
+detector:
+  weights: yolo11x.pt
+  imgsz: 1920
+  conf: 0.20
+  classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
+  tracker: bytetrack.yaml
+
+camera:                # all read from telemetry; listed here for reference
+  width: 3840
+  height: 2160
+  sensor_width_mm: 36.0          # 35mm-equivalent basis for focal_len
+
+calibration:
+  nominal_car_length_m: 4.0      # the ruler for global scale self-calibration
+  scale_accept_range: [0.4, 2.5] # a rooftop launch legitimately gives a large factor
+
+conflicts:
+  pet_max_s: 5.0
+  pet_min_s: 0.4               # below this: two ids on one vehicle
+  ttc_max_s: 8.0
+  ttc_min_s: 0.30
+  min_cross_angle_deg: 40.0    # below this it is car-following, not a conflict
+  min_gap_m: 1.0
+  neighbour_radius_m: 30.0
