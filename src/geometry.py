@@ -106,6 +106,24 @@ class GroundPlane:
         xy[~np.isfinite(t)] = np.nan
         return xy - self.origin
 
+    def to_image(self, xy: np.ndarray) -> np.ndarray:
+        """(N,2) metres on the ground -> (N,2) pixels. Inverse of `to_ground`.
+
+        Needed to draw ground-space results -- discovered lane lines, the back
+        of a queue -- back onto the footage they were derived from.
+        """
+        xy = np.atleast_2d(np.asarray(xy, dtype=float)) + self.origin
+        h = self.height * self.scale
+        d = np.column_stack([xy[:, 0], xy[:, 1], np.full(len(xy), -h)])
+        cam = d @ self.R                      # world -> camera (R is orthonormal)
+        K = np.linalg.inv(self.K_inv)
+        uvw = cam @ K.T
+        z = uvw[:, 2]
+        out = np.full((len(xy), 2), np.nan)
+        ok = z > 1e-9                         # behind the camera -> NaN
+        out[ok] = uvw[ok, :2] / z[ok, None]
+        return out
+
     def homography(self, width: int, height_px: int) -> np.ndarray:
         """3x3 image->ground homography, for warping whole images."""
         import cv2

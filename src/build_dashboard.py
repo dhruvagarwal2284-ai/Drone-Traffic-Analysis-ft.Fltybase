@@ -27,6 +27,10 @@ def build(tag: str = "intersection") -> Path:
             "occupancy": [round(v, 3) for v in c.occupancy],
             "cycle_s": k.get("cycle_s"), "peak_autocorr": k.get("peak_autocorr"),
         }
+    mp = ROOT / "out" / f"mapnative_{tag}.json"
+    if mp.exists():
+        bundle["mapnative"] = json.loads(mp.read_text(encoding="utf-8"))
+
     data = json.dumps(bundle)
 
     # keep the JSON inert inside <script type="application/json">

@@ -267,6 +267,107 @@ footer{
   <div class="callout" id="plateNote"></div>
 </section>
 
+<section id="aggSec" hidden>
+  <div class="shead"><h2>Aggregate insight</h2><span class="tag">across users &middot; time &middot; space</span></div>
+  <p class="note">Summaries that only exist once every road user has a complete path in a
+  common metric frame: where speed is actually lost, how far back the queue reaches in
+  metres, whether lanes exist at all, and the flow&ndash;density relationship measured
+  rather than fitted.</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Fundamental diagram</h3>
+      <p class="cap" style="margin:0 0 10px">Edie&rsquo;s generalised definitions over
+      space&ndash;time boxes. Each point is one box, per direction, normalised per lane.</p>
+      <svg class="chart" id="fdChart" viewBox="0 0 560 380" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="legend" id="fdLegend"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Flow&ndash;density summary</h3>
+      <div class="scroll"><table id="fdTable"></table></div>
+      <p class="cap">A loop detector samples flow at one point and infers the rest.
+      Complete trajectories give the whole space&ndash;time plane, so these are measured
+      quantities rather than a fitted curve.</p>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Back of queue, in metres</h3>
+      <p class="cap" style="margin:0 0 10px">Traced outward from the stop line through
+      contiguous stopped vehicles. A vehicle count cannot tell you whether a queue blocks
+      the junction upstream; a distance can.</p>
+      <svg class="chart" id="queueChart" viewBox="0 0 560 260" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="legend" id="queueLegend"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Do lanes exist here?</h3>
+      <div class="scroll"><table id="laneTable"></table></div>
+      <div id="lateralNote"></div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Lane volume and modal split</h3>
+      <p class="cap" style="margin:0 0 10px">Share of traffic in each discovered lane, and
+      what that lane is carrying.</p>
+      <div id="laneVol"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Approach volumes over time</h3>
+      <p class="cap" style="margin:0 0 10px">Vehicles per hour by approach, in 20 s intervals.</p>
+      <svg class="chart" id="dirVolChart" viewBox="0 0 560 260" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="legend" id="dirVolLegend"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Classified turning counts by interval</h3>
+    <p class="cap" style="margin:0 0 10px">The survey product a crew tallies by hand, resolved
+    into 20-second bins. Movements beyond the top three are folded into "other".</p>
+    <svg class="chart" id="intervalChart" viewBox="0 0 1120 260" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend" id="intervalLegend"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:2px">Where speed is lost</h3>
+    <p class="cap" style="margin:0 0 10px">85th-percentile speed per 4 m cell of carriageway.</p>
+    <canvas id="speedMap" height="380"></canvas>
+    <div class="legend" id="speedMapLegend"></div>
+    <div id="speedingNote"></div>
+  </div>
+</section>
+
+<section id="mapSec" hidden>
+  <div class="shead"><h2>Map-native output</h2><span class="tag">bound to the road network</span></div>
+  <p class="note">The SRT telemetry gives the ground-plane projection; the drone&rsquo;s own GPS
+  fix gives the origin. Every trajectory is then bound to a real OpenStreetMap link, a
+  direction along it, and a lane &mdash; moment to moment. Results stop being a floating
+  point cloud and become statements about a named piece of road.</p>
+
+  <div class="card">
+    <canvas id="mapCanvas" height="560"></canvas>
+    <div class="legend" id="mapLegend"></div>
+    <p class="cap">Real OSM link geometry. Desire lines follow the median observed path for
+    each movement, so they trace the road rather than cutting across it; width is
+    proportional to volume. Queue extents are drawn along the carriageway they occur on.</p>
+  </div>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Per-lane metrics on real geometry</h3>
+      <div class="scroll"><table id="perLaneTable"></table></div>
+      <p class="cap">Keyed on OSM link id and carriageway &mdash; joinable to any asset
+      register or network model that speaks the same identifiers.</p>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px">Registering the network</h3>
+      <div id="alignNote"></div>
+    </div>
+  </div>
+</section>
+
 <section>
   <div class="shead"><h2>Congestion across the whole recording</h2><span class="tag">detector-free</span></div>
   <p class="note">The tracked window is 120 s, but the recording is 399 s. This covers all of it
@@ -357,9 +458,19 @@ footer{
 <script>
 const D = JSON.parse(document.getElementById("payload").textContent);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const CLS_SLOT = {car:"--s1", motorcycle:"--s2", auto_rickshaw:"--s4", bus:"--s3",
-                  truck:"--s7", person:"--s5", bicycle:"--s6"};
+const CLS_SLOT = {car:"--s1", motorcycle:"--s2", two_wheeler:"--s2",
+                  auto_rickshaw:"--s4", bus:"--s3", truck:"--s7",
+                  person:"--s5", bicycle:"--s6"};
 const clsColor = c => css(CLS_SLOT[c] || "--s8");
+// The payload can contain detector labels ("motorcycle") or grouped labels
+// ("two_wheeler"); use one concise set of classes for chart legends.
+const clsKey = c => {
+  const k = String(c || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (["motorcycle", "bicycle", "two_wheeler", "auto_rickshaw"].includes(k)) return "two_wheeler";
+  if (["person", "pedestrian"].includes(k)) return "person";
+  return k === "car" ? "car" : "other";
+};
+const clsLabel = c => ({car:"car", two_wheeler:"two-wheeler", person:"person", other:"other"})[clsKey(c)];
 const fmt = (n,d=0) => n==null||!isFinite(n) ? "—"
   : n.toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
 const el = id => document.getElementById(id);
@@ -822,7 +933,338 @@ function drawObjects(){
     instead of 107 m, or a ${fmt(P.option_longer_lens_mm_equiv)} mm-equivalent lens — <i>and</i> a
     shallow camera angle. That is a different sensor tasking, not a better model.</p>`;
 }
-function renderAll(){ drawPaths(); drawHeat(); drawCong(); drawSpeed(); drawCorridor(); drawObjects(); }
+
+/* ---------------- aggregate ---------------- */
+function drawAggregate(){
+  const A = D.aggregate; if(!A) return;
+  el("aggSec").hidden = false;
+  const DIRC = {outbound:"--s1", inbound:"--s2"};
+
+  const P = (A.fundamental && A.fundamental.points) || [];
+  const svg = el("fdChart");
+  if(P.length && svg){
+    const W=560,H=380,L=54,R=14,T=14,B=44, iw=W-L-R, ih=H-T-B;
+    const kmax = Math.max.apply(null,P.map(p=>p.k))*1.05;
+    const qmax = Math.max.apply(null,P.map(p=>p.q))*1.05;
+    const X = k => L + (k/kmax)*iw, Y = q => T + (1-q/qmax)*ih;
+    let s="";
+    for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+      s+='<line class="gridline" x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>';
+      s+='<text class="axis" x="'+(L-8)+'" y="'+(y+3)+'" text-anchor="end">'+Math.round(qmax*(1-i/4))+'</text>'; }
+    for(let i=0;i<=4;i++){ const x=L+iw*i/4;
+      s+='<text class="axis" x="'+x+'" y="'+(H-24)+'" text-anchor="middle">'+Math.round(kmax*i/4)+'</text>'; }
+    s+='<text class="axis" x="'+(W/2)+'" y="'+(H-6)+'" text-anchor="middle">density (veh/km/lane)</text>';
+    s+='<text class="axis" transform="translate(13,'+(T+ih/2)+') rotate(-90)" text-anchor="middle">flow (veh/h/lane)</text>';
+    P.forEach(p=>{
+      s+='<circle cx="'+X(p.k).toFixed(1)+'" cy="'+Y(p.q).toFixed(1)+'" r="4" fill="var('+
+         (DIRC[p.dir]||"--s3")+')" fill-opacity=".62" stroke="var(--surface)" stroke-width="1.5"/>';
+    });
+    svg.innerHTML = s;
+    const dirs = Array.from(new Set(P.map(p=>p.dir)));
+    el("fdLegend").innerHTML = dirs.map(dir=>
+      '<span><i style="background:var('+(DIRC[dir]||"--s3")+')"></i>'+esc(dir)+'</span>').join("") +
+      '<span style="color:var(--ink-3)">'+P.length+' space&ndash;time boxes</span>';
+  }
+
+  const F = (A.fundamental && A.fundamental.summary) || {};
+  table(el("fdTable"),
+    [{h:"quantity",f:r=>r[0]},{h:"value",n:1,f:r=>'<span class="mono">'+r[1]+'</span>'}], [
+    ["Max flow", fmt(F.max_flow_vph)+" veh/h/lane"],
+    ["Density at max flow", fmt(F.density_at_max_flow_vpkm,1)+" veh/km/lane"],
+    ["Speed at max flow", fmt(F.speed_at_max_flow_kph,1)+" km/h"],
+    ["Max density observed", fmt(F.max_density_vpkm,1)+" veh/km/lane"],
+    ["Min speed observed", fmt(F.min_speed_kph,1)+" km/h"],
+    ["Max occupancy", fmt(F.max_occupancy_pct,1)+" %"],
+    ["Equivalent lanes", Object.entries(F.lanes_equiv||{}).map(kv=>kv[0]+" "+kv[1]).join(" · ")],
+  ]);
+
+  const Q = A.queues||{}; const legsQ = Object.keys(Q);
+  if(legsQ.length){
+    const W=560,H=260,L=44,R=14,T=14,B=32, iw=W-L-R, ih=H-T-B;
+    const tmin=Math.min.apply(null,legsQ.map(k=>Math.min.apply(null,Q[k].t)));
+    const tmax=Math.max.apply(null,legsQ.map(k=>Math.max.apply(null,Q[k].t)));
+    const qmax=Math.max(10,Math.max.apply(null,legsQ.map(k=>Math.max.apply(null,Q[k].queue_m))))*1.08;
+    const X=t=>L+((t-tmin)/(tmax-tmin||1))*iw, Y=q=>T+(1-q/qmax)*ih;
+    let s="";
+    for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+      s+='<line class="gridline" x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>';
+      s+='<text class="axis" x="'+(L-8)+'" y="'+(y+3)+'" text-anchor="end">'+Math.round(qmax*(1-i/4))+'</text>'; }
+    s+='<text class="axis" x="'+L+'" y="'+(H-6)+'">t='+Math.round(tmin)+'s</text>';
+    s+='<text class="axis" x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end">'+Math.round(tmax)+'s</text>';
+    s+='<text class="axis" transform="translate(11,'+(T+ih/2)+') rotate(-90)" text-anchor="middle">metres</text>';
+    const slots=["--s1","--s2","--s3"];
+    legsQ.forEach((k,i)=>{
+      const d=Q[k].t.map((t,j)=>(j?"L":"M")+X(t).toFixed(1)+","+Y(Q[k].queue_m[j]).toFixed(1)).join("");
+      s+='<path d="'+d+'" fill="none" stroke="var('+slots[i%3]+')" stroke-width="1.8" stroke-linejoin="round" opacity=".85"/>';
+    });
+    el("queueChart").innerHTML=s;
+    el("queueLegend").innerHTML = legsQ.map((k,i)=>
+      '<span><i style="background:var('+slots[i%3]+')"></i>'+esc(k)+' &mdash; max '+fmt(Q[k].max_m,1)+' m</span>').join("");
+  }
+
+  const LN = A.lanes||[];
+  table(el("laneTable"), [
+    {h:"approach", f:r=>esc(r.leg)},
+    {h:"modes found", n:1, f:r=>fmt(r.n_lanes)},
+    {h:"offsets (m)", f:r=>'<span class="mono">'+r.lane_offsets_m.join(", ")+'</span>'},
+    {h:"discipline", n:1, f:r=> r.discipline_index==null
+        ? '<span style="color:var(--ink-3)">n/a</span>'
+        : '<span class="mono">'+fmt(r.discipline_index,2)+'</span>'},
+    {h:"samples", n:1, f:r=>fmt(r.samples)},
+  ], LN);
+
+  const withCls = LN.filter(l=>l.lateral_by_class);
+  const best = withCls.sort((a,b)=>b.samples-a.samples)[0];
+  if(best){
+    const rows = Object.entries(best.lateral_by_class).sort((a,b)=>b[1].n-a[1].n);
+    el("lateralNote").innerHTML =
+      '<h3 style="font-size:14px;font-weight:600;margin:20px 0 8px">Lateral position by class &mdash; '+
+        esc(best.leg)+' approach</h3>' +
+      '<div class="scroll"><table><thead><tr><th>class</th><th class="n">median offset</th>' +
+      '<th class="n">spread (p15&ndash;p85)</th><th class="n">n</th></tr></thead><tbody>' +
+      rows.map(r=>'<tr><td>'+esc(r[0].replace("_"," "))+'</td><td class="n mono">'+
+        fmt(r[1].p50,2)+' m</td><td class="n mono">'+fmt(r[1].spread,2)+' m</td><td class="n">'+
+        fmt(r[1].n)+'</td></tr>').join("") +
+      '</tbody></table></div><p class="cap">A wider spread means the class uses more of the ' +
+      'carriageway rather than holding a line &mdash; which is what filtering looks like when measured.</p>';
+  }
+
+
+  /* lane volume + modal split */
+  const MODC = {car:"--s1", two_wheeler:"--s2", person:"--s3"};
+  const modColour = c => css(MODC[c] || "--ink-3");
+  const lv = LN.filter(l=>l.lanes && l.lanes.length);
+  if(lv.length){
+    el("laneVol").innerHTML = lv.map(L=>{
+      const rows = L.lanes.map(ln=>{
+        const mix = Object.entries(ln.modal_split).sort((a,b)=>b[1]-a[1]);
+        const bar = mix.map(m=>
+          '<span title="'+esc(m[0])+' '+m[1]+'%" style="display:block;height:100%;float:left;width:'+
+          m[1]+'%;background:'+modColour(m[0])+'"></span>').join("");
+        const top = mix.slice(0,3).map(m=>esc(m[0].replace("_"," "))+" "+fmt(m[1],0)+"%").join(" · ");
+        return '<div style="margin:9px 0">'+
+          '<div style="display:flex;gap:10px;align-items:baseline;font-size:12.5px">'+
+            '<span class="mono" style="min-width:52px">lane '+ln.lane+'</span>'+
+            '<span style="color:var(--ink-3);min-width:66px" class="mono">'+fmt(ln.offset_m,1)+' m</span>'+
+            '<span style="font-weight:600;min-width:48px" class="num">'+fmt(ln.share_pct,1)+'%</span>'+
+            '<span style="color:var(--ink-2)">'+top+'</span>'+
+          '</div>'+
+          '<div style="height:11px;border-radius:3px;overflow:hidden;background:var(--surface-2);margin-top:3px">'+
+            bar+'</div></div>';
+      }).join("");
+      return '<div style="margin-bottom:16px"><div style="font-size:13px;font-weight:600;'+
+        'border-bottom:1px solid var(--line);padding-bottom:4px">'+esc(L.leg)+' approach</div>'+
+        rows+'</div>';
+    }).join("");
+    const seen = new Set();
+    lv.forEach(L=>L.lanes.forEach(ln=>Object.keys(ln.modal_split).forEach(k=>seen.add(k))));
+    el("laneVol").innerHTML += '<div class="legend">' +
+      ["car","two_wheeler","person"].filter(k=>seen.has(k)).map(k=>
+        '<span><i style="background:'+modColour(k)+'"></i>'+esc(k.replace("_"," "))+'</span>').join("") +
+      '<span><i style="background:'+css("--ink-3")+'"></i>other</span></div>';
+  }
+
+  /* approach volumes over time */
+  const DV = A.directional_volumes||[];
+  if(DV.length){
+    const W=560,H=260,L=48,R=14,T=14,B=32, iw=W-L-R, ih=H-T-B;
+    const legsD = Array.from(new Set(DV.map(r=>r.origin)));
+    const ts = Array.from(new Set(DV.map(r=>r.bin))).sort((a,b)=>a-b);
+    const vmax = Math.max.apply(null, DV.map(r=>r.veh_hr))*1.1;
+    const X=t=>L+((t-ts[0])/((ts[ts.length-1]-ts[0])||1))*iw, Y=v=>T+(1-v/vmax)*ih;
+    let g="";
+    for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+      g+='<line class="gridline" x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>';
+      g+='<text class="axis" x="'+(L-8)+'" y="'+(y+3)+'" text-anchor="end">'+Math.round(vmax*(1-i/4))+'</text>'; }
+    g+='<text class="axis" transform="translate(11,'+(T+ih/2)+') rotate(-90)" text-anchor="middle">veh/h</text>';
+    g+='<text class="axis" x="'+L+'" y="'+(H-6)+'">t='+Math.round(ts[0])+'s</text>';
+    g+='<text class="axis" x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end">'+Math.round(ts[ts.length-1])+'s</text>';
+    const slots=["--s1","--s2","--s3"];
+    legsD.forEach((lg,i)=>{
+      const pts = ts.map(t=>{ const r=DV.find(x=>x.bin===t && x.origin===lg); return [t, r?r.veh_hr:0]; });
+      const d = pts.map((pt,j)=>(j?"L":"M")+X(pt[0]).toFixed(1)+","+Y(pt[1]).toFixed(1)).join("");
+      g+='<path d="'+d+'" fill="none" stroke="var('+slots[i%3]+')" stroke-width="2" stroke-linejoin="round"/>';
+    });
+    el("dirVolChart").innerHTML=g;
+    el("dirVolLegend").innerHTML = legsD.map((lg,i)=>
+      '<span><i style="background:var('+slots[i%3]+')"></i>from '+esc(lg)+'</span>').join("");
+  }
+
+  /* classified counts by interval, stacked by movement */
+  const IC = A.interval_counts||[];
+  if(IC.length){
+    const tot={}; IC.forEach(r=>{ tot[r.movement]=(tot[r.movement]||0)+r.n; });
+    const top = Object.entries(tot).sort((a,b)=>b[1]-a[1]).slice(0,3).map(e=>e[0]);
+    const key = m => top.indexOf(m)>=0 ? m : "other";
+    const cats = top.concat(["other"]);
+    const bins = Array.from(new Set(IC.map(r=>r.bin))).sort((a,b)=>a-b);
+    const M = {};
+    bins.forEach(b=>{ M[b]={}; cats.forEach(c=>M[b][c]=0); });
+    IC.forEach(r=>{ M[r.bin][key(r.movement)] += r.n; });
+    const stackMax = Math.max.apply(null, bins.map(b=>cats.reduce((a,c)=>a+M[b][c],0)))*1.1;
+    const W=1120,H=260,L=48,R=14,T=14,B=34, iw=W-L-R, ih=H-T-B;
+    const bw = Math.max(4, iw/bins.length - 3);
+    let g="";
+    for(let i=0;i<=4;i++){ const y=T+ih*i/4;
+      g+='<line class="gridline" x1="'+L+'" y1="'+y+'" x2="'+(W-R)+'" y2="'+y+'"/>';
+      g+='<text class="axis" x="'+(L-8)+'" y="'+(y+3)+'" text-anchor="end">'+Math.round(stackMax*(1-i/4))+'</text>'; }
+    g+='<text class="axis" transform="translate(11,'+(T+ih/2)+') rotate(-90)" text-anchor="middle">vehicles</text>';
+    const slots=["--s1","--s2","--s3","--ink-3"];
+    bins.forEach((b,bi)=>{
+      const x = L + bi*(iw/bins.length) + 1.5;
+      let acc = 0;
+      cats.forEach((c,ci)=>{
+        const v = M[b][c]; if(!v) return;
+        const y0 = T + (1-(acc+v)/stackMax)*ih, y1 = T + (1-acc/stackMax)*ih;
+        g+='<rect x="'+x.toFixed(1)+'" y="'+y0.toFixed(1)+'" width="'+bw.toFixed(1)+
+           '" height="'+Math.max(0,(y1-y0)-2).toFixed(1)+'" rx="2" fill="var('+slots[ci]+')"/>';
+        acc += v;
+      });
+      if(bi%3===0) g+='<text class="axis" x="'+(x+bw/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle">'+Math.round(b)+'</text>';
+    });
+    g+='<text class="axis" x="'+(W/2)+'" y="'+(H-1)+'" text-anchor="middle">time (s)</text>';
+    el("intervalChart").innerHTML=g;
+    el("intervalLegend").innerHTML = cats.map((c,i)=>
+      '<span><i style="background:var('+slots[i]+')"></i>'+esc(c)+'</span>').join("") +
+      '<span style="color:var(--ink-3)">'+IC.length+' movement×class×interval rows</span>';
+  }
+
+  const SF = A.speed_field||{};
+  const cv = el("speedMap");
+  if(cv && SF.cells && SF.cells.length){
+    const fit = fitCanvas(cv, 380); const g=fit.g, w=fit.w, h=fit.h;
+    g.clearRect(0,0,w,h);
+    const xs=SF.cells.map(c=>c.x), ys=SF.cells.map(c=>c.y);
+    const x0=Math.min.apply(null,xs),x1=Math.max.apply(null,xs);
+    const y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys);
+    const pad=26, sc=Math.min((w-2*pad)/((x1-x0)||1),(h-2*pad)/((y1-y0)||1));
+    const X=v=>w/2+(v-(x0+x1)/2)*sc, Y=v=>h/2-(v-(y0+y1)/2)*sc;
+    const ramp=["--seq1","--seq2","--seq3","--seq4","--seq5","--seq6","--seq7"].map(css);
+    const vmax=Math.max.apply(null,SF.cells.map(c=>c.v85));
+    const side=Math.max(3,SF.cell_m*sc);
+    SF.cells.forEach(c=>{
+      const t=Math.min(1,c.v85/vmax);
+      g.fillStyle=ramp[Math.min(ramp.length-1,Math.floor(t*ramp.length))];
+      g.fillRect(X(c.x)-side/2,Y(c.y)-side/2,Math.ceil(side),Math.ceil(side));
+    });
+    el("speedMapLegend").innerHTML =
+      '<span style="color:var(--ink-3)">slow</span>' +
+      ramp.map(c=>'<i style="background:'+c+';width:20px;height:9px;border-radius:0"></i>').join("") +
+      '<span style="color:var(--ink-3)">fast &middot; peak cell v85 '+fmt(vmax,1)+' km/h</span>';
+    el("speedingNote").innerHTML = '<div class="callout" style="margin-bottom:0">' +
+      '<h3>There is no speeding problem here</h3><p>Only <b>' +
+      fmt(100*(SF.frac_samples_over_40||0),2)+'%</b> of moving samples exceed 40 km/h and <b>' +
+      fmt(100*(SF.frac_samples_over_50||0),2)+'%</b> exceed 50 km/h, against a peak cell ' +
+      '85th-percentile of '+fmt(SF.v85_max,1)+' km/h. This junction does not have a speed ' +
+      'problem &mdash; it has a delay and conflict problem, and an enforcement response aimed ' +
+      'at speed would address neither.</p></div>';
+  }
+}
+
+/* ---------------- map-native ---------------- */
+function drawMap(){
+  const M = D.mapnative; if(!M) return;
+  el("mapSec").hidden = false;
+  const cv = el("mapCanvas"); if(!cv) return;
+  const fit = fitCanvas(cv, 560); const g = fit.g, w = fit.w, h = fit.h;
+  g.clearRect(0,0,w,h);
+
+  const lat0 = M.origin.lat, lon0 = M.origin.lon;
+  const MPD = 111320.0, cosl = Math.cos(lat0*Math.PI/180);
+  const ll2xy = c => [ (c[0]-lon0)*MPD*cosl, (c[1]-lat0)*MPD ];
+
+  let xs=[], ys=[];
+  M.network.forEach(L=>{ xs.push(...L.x); ys.push(...L.y); });
+  if(!xs.length) return;
+  const q=(a,f)=>{const b=[...a].sort((m,n)=>m-n);return b[Math.floor(f*(b.length-1))];};
+  const x0=q(xs,.02), x1=q(xs,.98), y0=q(ys,.02), y1=q(ys,.98);
+  const pad=34, sc=Math.min((w-2*pad)/((x1-x0)||1),(h-2*pad)/((y1-y0)||1));
+  const cx=(x0+x1)/2, cy=(y0+y1)/2;
+  const X=v=>w/2+(v-cx)*sc, Y=v=>h/2-(v-cy)*sc;
+
+  /* road network -- real OSM geometry */
+  g.lineCap="round"; g.lineJoin="round";
+  M.network.forEach(L=>{
+    const major = ["primary","trunk","secondary","tertiary"].indexOf(L.highway)>=0;
+    g.strokeStyle = css(major ? "--ink-3" : "--line");
+    g.lineWidth = major ? 9 : 3;
+    g.globalAlpha = major ? .55 : .45;
+    g.beginPath();
+    L.x.forEach((v,i)=> i? g.lineTo(X(v),Y(L.y[i])) : g.moveTo(X(v),Y(L.y[i])));
+    g.stroke();
+  });
+  g.globalAlpha=1;
+
+  /* queue extents, on the carriageway */
+  ((M.queues_geo&&M.queues_geo.features)||[]).filter(f=>f.properties.stat==="max_m")
+    .forEach(f=>{
+      const pts=f.geometry.coordinates.map(ll2xy);
+      g.strokeStyle=css("--s2"); g.lineWidth=11; g.globalAlpha=.5;
+      g.beginPath(); pts.forEach((p,i)=> i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1])));
+      g.stroke(); g.globalAlpha=1;
+      const tip=pts[pts.length-1];
+      g.fillStyle=css("--ink"); g.font='11px "IBM Plex Mono", monospace';
+      g.fillText(f.properties.approach+" "+f.properties.length_m+" m", X(tip[0])+7, Y(tip[1])-6);
+    });
+
+  /* desire lines -- median observed path, width by volume */
+  const DS=((M.desire&&M.desire.features)||[]).slice().sort((a,b)=>a.properties.volume-b.properties.volume);
+  const vmax=Math.max(1,...DS.map(f=>f.properties.volume));
+  const TURNC={through:"--s1", left:"--s3", right:"--s3", "u-turn":"--s2"};
+  DS.forEach(f=>{
+    const pts=f.geometry.coordinates.map(ll2xy);
+    g.strokeStyle=css(TURNC[f.properties.turn]||"--s1");
+    g.lineWidth=1.5+7*Math.sqrt(f.properties.volume/vmax);
+    g.globalAlpha=.8;
+    g.beginPath(); pts.forEach((p,i)=> i?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1])));
+    g.stroke();
+    const mid=pts[Math.floor(pts.length/2)];
+    g.globalAlpha=1; g.fillStyle=css("--ink");
+    g.font='600 11px "IBM Plex Sans", sans-serif';
+    if(f.properties.volume>=8) g.fillText(f.properties.movement+"  "+f.properties.volume,
+                                          X(mid[0])+6, Y(mid[1])-5);
+  });
+  g.globalAlpha=1;
+
+  el("mapLegend").innerHTML =
+    '<span><i style="background:'+css("--ink-3")+'"></i>OSM carriageway</span>' +
+    '<span><i style="background:'+css("--s1")+'"></i>through movement</span>' +
+    '<span><i style="background:'+css("--s3")+'"></i>turning movement</span>' +
+    '<span><i style="background:'+css("--s2")+'"></i>queue extent / u-turn</span>' +
+    '<span style="color:var(--ink-3)">line width &prop; volume</span>';
+
+  /* per-lane table */
+  table(el("perLaneTable"), [
+    {h:"link", f:r=>'<span class="mono" style="font-size:11.5px">'+esc(String(r.link_id).replace(".0",""))+'</span>'},
+    {h:"name", f:r=>esc(r.link_name||"unnamed")},
+    {h:"side", f:r=>esc(r.carriageway)},
+    {h:"lane", n:1, f:r=>fmt(r.lane)},
+    {h:"vehicles", n:1, f:r=>fmt(r.vehicles)},
+    {h:"mean", n:1, f:r=>'<span class="mono">'+fmt(r.mean_kph,1)+'</span>'},
+    {h:"p85 km/h", n:1, f:r=>'<span class="mono">'+fmt(r.p85_kph,1)+'</span>'},
+  ], (M.per_lane||[]).slice(0,12));
+
+  const A=M.alignment||{};
+  el("alignNote").innerHTML =
+    '<p style="color:var(--ink-2);font-size:14px;margin:0 0 12px">Published OSM geometry and the ' +
+    'drone&rsquo;s GPS fix disagree by tens of metres here &mdash; both carry error, and in this ' +
+    'region OSM is often traced from offset imagery. Vehicles, however, are on the carriageway ' +
+    'by definition, so the trajectories are better control points than either.</p>' +
+    '<div class="scroll"><table><tbody>' +
+    [["median vehicle-to-link, before", fmt(A.median_dist_before_m,2)+" m"],
+     ["median vehicle-to-link, after", fmt(A.median_dist_after_m,2)+" m"],
+     ["registration shift applied", fmt(A.shift_magnitude_m,1)+" m"],
+     ["samples used", fmt(A.samples)],
+     ["trajectory samples matched", fmt(M.match_rate,1)+" %"]].map(r=>
+      '<tr><td>'+r[0]+'</td><td class="n mono">'+r[1]+'</td></tr>').join("") +
+    '</tbody></table></div>' +
+    '<p class="cap">Only a translation is fitted. Rotation comes from the gimbal compass and ' +
+    'scale from the footprint calibration &mdash; both already independently validated, so ' +
+    'neither is re-estimated here. The fit is corroborated by a quantity it was not optimised ' +
+    'against: OSM&rsquo;s own junction node moves from 25.6 m to 12.1 m of the observed ' +
+    'junction centre.</p>';
+}
+function renderAll(){ drawPaths(); drawHeat(); drawCong(); drawSpeed(); drawCorridor(); drawObjects(); drawAggregate(); drawMap(); }
 renderAll();
 addEventListener("resize", () => { clearTimeout(window.__rt);
   window.__rt = setTimeout(renderAll, 160); });

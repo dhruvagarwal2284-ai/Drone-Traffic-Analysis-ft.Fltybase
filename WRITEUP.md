@@ -55,6 +55,10 @@ The trajectory table is the product. Everything else is a query against it.
 | `insights.py` | Leg discovery, turning movements, speeds, delay, anomalies |
 | `congestion.py` | Detector-free congestion signal over the full recording |
 | `run_analysis.py` | End-to-end orchestration → `report.json` |
+| `attributes.py` | Measured L/W from the oriented-dims solve, colour, size class, body type |
+| `objects.py` | Per-object record: identity + kinematics + movement + conflicts |
+| `aggregate.py` | Interval counts, speed field, lane discovery, queue length, Edie flow/density |
+| `geo.py` | Georeferencing, OSM network registration, map-matching, GeoJSON export |
 | `overlay.py`, `build_dashboard.py` | Annotated video, dashboard |
 
 **Analysis window:** 120 s (t = 240–360 s) at 10 fps = 1,200 frames, chosen because it
@@ -320,11 +324,11 @@ Colour is sampled from the central patch only (the roof — a full box contains 
 shadow and often a neighbour) and taken as a median across every frame of the track.
 
 ```
-dark grey      33.8 %        red      8.2 %
-silver / grey  28.7 %        blue     3.3 %
-white          14.3 %        other    1.7 %
-black          10.0 %
-                              → 86.8 % achromatic
+dark grey      33.2 %        red      8.4 %
+silver / grey  29.0 %        blue     3.2 %
+white          14.4 %        other    1.9 %
+black           9.9 %
+                              → 86.5 % achromatic
 ```
 
 That achromatic share matches the Indian market. The split *within* the greys is a
@@ -371,6 +375,9 @@ from each end before extremes are taken, and every object also carries `a_p95_ms
 than deleted.** Quote the percentile columns for individual objects; the raw max is
 retained for auditability.
 
+The overlay video renders this record directly, so the classification and colour
+extraction can be checked by eye against the footage rather than only in aggregate.
+
 ### 9.5 Licence plates — not achievable, and why
 
 | | at 2.54 cm/px (best) | at 3.27 cm/px (centre) |
@@ -396,14 +403,255 @@ class, colour and precise dimensions — delivered above.
 
 ---
 
-## 10. Results
+## 10. Aggregate insight
+
+Summaries across many road users, a time window, and a region of the road. Each of these
+needs the *whole* space-time plane; a point sensor can only approximate them.
+
+### 10.1 Flow, density and occupancy - Edie's generalised definitions
+
+For a space-time region A of size (ds x dt):
+
+```
+q = (total distance travelled in A) / |A|      [veh/s]
+k = (total time spent in A)         / |A|      [veh/m]
+v = q / k                                      [m/s]
+```
+
+These are exact for any region and assume no stationarity. A loop detector measures flow
+at a single point and infers density; complete trajectories give both directly, so the
+fundamental diagram is **measured rather than fitted**.
+
+Two normalisations are essential and were both wrong on the first attempt. Flow initially
+came out at 10,712 veh/h and density at 1,208 veh/km -- physically impossible until you
+notice the corridor is 28 m wide, bidirectional and multi-lane. Splitting on the sign of
+velocity along the axis, and dividing by an equivalent lane count taken from each stream's
+own measured width, brings it into range:
+
+| quantity | value |
+|---|---|
+| Max flow | **2,266 veh/h/lane** |
+| Density at max flow | 110.0 veh/km/lane |
+| Speed at max flow | 20.6 km/h |
+| Max density observed | 207.4 veh/km/lane |
+| Min speed observed | 4.9 km/h |
+| Max occupancy | 76.3 % |
+| Equivalent lanes | inbound 5.7 · outbound 3.33 |
+
+Occupancy is `k x mean vehicle length` -- the quantity a loop reports -- so the output is
+directly comparable to installed instrumentation.
+
+The scatter sits almost entirely on the **congested branch**: speed at maximum flow is
+20.6 km/h, far below free-flow. This junction is operating at or past capacity
+for the whole window.
+
+### 10.2 Queue length in metres
+
+Traced outward from a stop line (itself derived from where vehicles actually stop) through
+contiguous stopped vehicles, ending at the first gap wider than 14 m.
+
+| approach | max queue | p85 | mean |
+|---|---|---|---|
+| N | 26.6 m | 22.0 m | 16.4 m |
+| SE | 44.1 m | 32.1 m | 29.8 m |
+| W | 71.7 m | 43.7 m | 38.1 m |
+
+A vehicle count cannot tell an engineer whether a queue blocks the junction upstream. A
+distance can, and it is the number a signal-timing decision actually consumes.
+
+### 10.3 Do lanes exist here?
+
+Lanes are not read from paint -- there is little, and it is widely ignored. A lane is
+defined as a mode in the lateral-offset distribution on each approach, which makes lane
+discipline a *measured* quantity:
+
+| approach | modes found | offsets (m) | discipline index | samples |
+|---|---|---|---|---|
+| N | 1 | 8.1 | n/a | 3,345 |
+| SE | 2 | -2.0, 10.0 | 0.75 | 14,381 |
+| W | 3 | -8.46, 0.54, 4.04 | 0.57 | 16,177 |
+
+The discipline index is 1.0 for sharply separated lanes and 0 for a continuum. Where only
+one mode is found the index is undefined and reported as such, because a single mode means
+traffic is using the carriageway as a continuous surface rather than as lanes -- which is
+itself the finding.
+
+
+**Lane volume and modal split.** Once lanes are located, what each one carries can be
+measured — and the lanes are not interchangeable:
+
+| approach | lane | offset | share of approach | modal split |
+|---|---|---|---|---|
+| N | 1 | 8.1 m | 100.0% | car 54%, two wheeler 38%, truck 5% |
+| SE | 1 | -2.0 m | 54.2% | two wheeler 55%, car 41%, truck 2% |
+| SE | 2 | 10.0 m | 45.8% | car 47%, two wheeler 46%, truck 6% |
+| W | 1 | -8.5 m | 44.0% | car 44%, two wheeler 39%, person 16% |
+| W | 2 | 0.5 m | 23.2% | car 78%, two wheeler 22%, truck 0% |
+| W | 3 | 4.0 m | 32.8% | car 54%, two wheeler 39%, bus 3% |
+
+Three things fall out of that table. The W approach has one lane that is **78% car** and
+another carrying **15.5% pedestrians** — the latter is the kerbside edge, where people are
+walking in the carriageway rather than on a footpath. On the SE approach, two-wheelers
+prefer the nearside lane (55% of it) over the offside (46%). None of this is visible in an
+approach-level total, and all of it changes what an intervention should target.
+
+**Classified counts by interval.** 55 movement x class x interval rows at 20-second
+resolution, plus 15 directional approach volumes in veh/h and PCU/h. This is the
+turning count a survey crew produces, at a time resolution manual counting cannot reach —
+and because it is derived from trajectories rather than tallied at a screenline, every
+count is attributable to a specific vehicle with a known path.
+
+**Lateral position by class** is the more revealing cut. On the busiest approach,
+two-wheelers sit at a different median offset from cars and occupy a visibly wider spread:
+that is lane-filtering, quantified, rather than asserted.
+
+### 10.4 Where speed is lost
+
+85th-percentile speed per 4 m cell of carriageway, over 353 cells.
+
+Only **2.08%** of moving samples exceed 40 km/h and **0.03%** exceed
+50 km/h, against a peak cell 85th-percentile of 43.6 km/h.
+
+**There is no speeding problem at this site.** It has a delay and conflict problem. An
+enforcement response aimed at speed would address neither -- which is exactly the kind of
+misdirected intervention that aggregate-only reporting invites, and that a spatial speed
+field prevents.
+
+### 10.5 Classified counts by interval
+
+Covered in 10.3 above, and rendered on the dashboard as a stacked count per 20-second
+interval by movement, alongside per-approach volumes in veh/h.
+
+---
+
+## 11. Map-native output
+
+Everything to this point lives in a local metric frame whose origin sits under a chosen
+pixel. That is enough for speeds and conflicts, but it is not map-native: the results
+cannot be laid over real road geometry, joined to an asset register, or handed to anyone
+who works in lat/lon. Three steps close that gap.
+
+### 11.1 Georeferencing from the SRT telemetry
+
+The ENU frame is already metric and north-aligned -- the rotation is built from a compass
+gimbal yaw -- and the drone's own GPS fix supplies the origin. The conversion to WGS84 is
+therefore a local tangent-plane offset: no control points, no rubber-sheeting.
+
+The inverse projection (`GroundPlane.to_image`) round-trips image -> ground -> image at
+**0.0000 px**, so ground-space results can be drawn back onto the footage they came from.
+
+### 11.2 Registering the network -- and a false answer found on the way
+
+OpenStreetMap supplies the link geometry (43 links in view, the arterial being
+*Gopal Hari Deshmukh Marg*). Published OSM geometry and the drone GPS fix disagree by tens
+of metres: both carry error, and in this region OSM is frequently traced from offset
+imagery. Vehicles, however, are on the carriageway by definition, so the trajectories are
+better control points than either source.
+
+Only a **translation** is fitted. Rotation comes from the gimbal compass and scale from
+the footprint calibration; both are independently validated already and are not
+re-estimated.
+
+**The first attempt was wrong, and looked convincing.** Fitting against the full network
+-- which includes 39 service and 39 residential ways -- produced a confident optimum with
+a 1.68 m residual at a shift of **91 m**. That is not GPS error; translation-only
+registration had snapped the trajectories onto a *different parallel road*, and the
+excellent residual was a false minimum manufactured by the density of candidate links.
+The tell was that the optimum kept moving as the search window widened.
+
+Restricting the fit to arterial links and bounding the search to a physically plausible
+range converges:
+
+| | |
+|---|---|
+| Median vehicle-to-link, before | 15.98 m |
+| Median vehicle-to-link, after | **1.97 m** |
+| Registration shift applied | 24.7 m |
+| Samples used | 20,000 |
+
+**Corroborated by a quantity it was not optimised against.** The fit minimises
+vehicle-to-link distance. OSM's own junction node -- which plays no part in that objective
+-- moves from **25.6 m** to **12.1 m** of the observed junction centre (taken as the
+centroid of measured conflicts). An independent measure improving alongside the fitted one
+is what separates a real registration from a plausible-looking artefact.
+
+### 11.3 Map-matching, moment to moment
+
+Each trajectory sample is bound to a link, a direction along it, and a lane. Direction is
+the sign of the vehicle's heading against the link's digitised direction, so "which way
+along this road" is recovered without depending on the one-way tag being correct. The
+signed lateral offset separates the two carriageways of a divided road and is what the
+lane index is built from.
+
+```
+96.6 % of trajectory samples matched to a link
+   primary      28,913   (Gopal Hari Deshmukh Marg)
+   tertiary     3,758
+   residential  3,918
+```
+
+### 11.4 Per-lane metrics on real geometry
+
+Keyed on OSM link id and carriageway, so the output joins to any network model or asset
+register speaking the same identifiers:
+
+| link | name | side | lane | vehicles | mean km/h | p85 km/h |
+|---|---|---|---|---|---|---|
+| `239844585` | Gopal Hari Deshmukh Marg | left | 1 | 194 | 14.9 | 27.0 |
+| `239844585` | Gopal Hari Deshmukh Marg | right | 1 | 167 | 12.4 | 24.1 |
+| `250162145` | Gopal Hari Deshmukh Marg | right | 1 | 153 | 19.3 | 29.4 |
+| `239844585` | Gopal Hari Deshmukh Marg | left | 2 | 147 | 6.6 | 17.6 |
+| `250162145` | Gopal Hari Deshmukh Marg | left | 1 | 139 | 20.3 | 34.3 |
+| `239844585` | Gopal Hari Deshmukh Marg | right | 2 | 92 | 15.5 | 30.2 |
+
+The lanes are not equivalent: on the same link and carriageway, lane 1 and lane 2 differ
+by more than a factor of two in mean speed. That is a per-lane operational fact invisible
+to any link-level average.
+
+### 11.5 The map-native products
+
+Written to `out/geojson/`, in WGS84, openable in QGIS or any web map:
+
+- `network.geojson` -- the registered link geometry
+- `trajectories.geojson` -- road-user paths carrying class, body type, colour, measured
+  length, mean speed and movement
+- `desire_lines.geojson` -- one line per origin-destination movement, weighted by volume
+  and drawn through the **median observed path** so it follows the road layout rather than
+  cutting across it as a straight chord
+- `queues.geojson` -- queue extents drawn *along the carriageway* they occur on, at max
+  and 85th-percentile length
+
+The dashboard renders these over the real link geometry as vectors rather than raster
+tiles, so the map is self-contained and needs no tile server.
+
+---
+
+## 12. Results
 
 Interactive dashboard: **https://claude.ai/code/artifact/aa34f729-3f04-4df9-8532-842e13016429**
 
 Included in the code package:
 
-- `demo/example_output.mp4` — annotated overlay: boxes, ids, class, speed in km/h, and
-  trajectory trails showing each road user's full path
+- `demo/example_output.mp4` — annotated overlay rendering the **object record itself**:
+  box coloured by body type, and each label carrying body type, *measured* length in
+  metres, speed in km/h, and a chip of the vehicle's measured paint colour. The chip is
+  deliberate — it lets the colour extraction be checked against the vehicle it was taken
+  from, in the same frame, so the video validates its own attributes instead of asking the
+  viewer to trust a table. Trajectory trails show each road user's full path.
+  The **aggregate** layer is drawn on the same frame and is deliberately the loudest thing
+  on it: a live HUD reading flow, density, space-mean speed and occupancy per lane straight
+  off the Edie space-time boxes; one density ribbon per **discovered traffic path**, always over
+  the same 48 m road segment, where **width = live vehicles/km/lane** and green/amber/red =
+  light/busy/dense; current queue length as a separate readout; and lane centres as dashed lines. Trails are
+  dimmed so the aggregate layer sits on top rather than competing with them.
+
+  An earlier version drew all of this too faintly to read against the trails -- technically
+  present, practically invisible, which for a viewer is the same as absent.
+
+  All of it was derived in ground coordinates and projected back through the inverse
+  homography, so the fact that the lane lines land on the carriageway rather than in the
+  buildings is itself a check on the ground frame: a wrong calibration would put them
+  visibly off the road.
 - `demo/conflict_*.mp4` — six evidence clips, cropped to the worst interactions
 - `demo/dashboard.html` — the full dashboard (trajectory plot, conflict heatmap, OD
   matrix, congestion/cycle chart, speed distributions, ranked conflicts, anomalies)
@@ -426,7 +674,7 @@ checked is physics — each of these could have failed:
 
 ---
 
-## 11. Limitations
+## 13. Limitations
 
 Stated plainly, because they bound how the numbers should be read.
 
@@ -435,11 +683,20 @@ Stated plainly, because they bound how the numbers should be read.
   spatial pattern and class composition are the robust reads; the absolute rate is not.
 - **Pedestrian counts are a floor.** Tiled inference on the same frames finds **1.7–1.9×
   more road users and 5–6× more pedestrians** than full-frame at 1920 px.
-- **Auto-rickshaws are not separable** from motorcycles at this resolution. An earlier
-  version tried to split them by metric footprint size; the data refuted it — tracks
-  labelled auto-rickshaw measured 2.13 m against 2.07 m for motorcycles, one distribution
-  and not two, where a real auto is 2.6–2.9 m. That heuristic was removed and the classes
-  merged. This is a detector problem, not a geometry problem.
+- **Body type is inferred from size, not read from the vehicle.** Auto-rickshaws *are*
+  now separable — the oriented-dimension solve of §9.1 gives 2.59 m against 1.67 m for
+  two-wheelers — but an individual assignment carries more uncertainty than the aggregate
+  distribution does. A naive footprint measurement could not do this (2.13 m vs 2.07 m,
+  one distribution and not two), so the capability rests entirely on removing the
+  heading-dependent inflation.
+- **Vehicle width is ~30% over-measured.** It is the ill-conditioned half of the L/W
+  solve; length is reliable, width only breaks ties in body-type assignment.
+- **Licence plates and make/model are not achievable** from this footage — 2.0 px
+  character height against ~16 px for OCR, and plate surfaces face away from a −63°
+  camera entirely. See §9.5 for the sensor tasking that would be required.
+- **Peak acceleration needs the percentile columns.** Smoother edge transients inflate the
+  raw per-object maximum; use `a_p95_ms2` / `a_p05_ms2` and the `kinematics_plausible`
+  flag (3 of 687 objects fail it).
 - **Class error from domain gap.** COCO is ground-level imagery; from directly overhead it
   routinely calls a two-wheeler a car. Tiling does *not* fix this (measured: motorcycles
   3→3 and 13→11 with tiling) because it is a domain problem, not a resolution problem.
@@ -447,20 +704,36 @@ Stated plainly, because they bound how the numbers should be read.
 - **Extreme camera angle.** The corridor video sits at −18.5° gimbal pitch: 211 m to scene
   centre, 23.5 cm/px along-track, a motorcycle 8 px across. It is deliberately **not**
   tracked — precision there would be fabricated. It receives the detector-free pass only.
+- **Lane assignment is soft.** Lanes are modes in a lateral-offset distribution, not
+  painted markings. On approaches where traffic uses the carriageway as a continuum the
+  mode count is not a lane count, and the discipline index is reported as undefined
+  rather than forced to a number.
+- **Fundamental-diagram values are per *equivalent* lane** (measured stream width /
+  3.5 m), not per painted lane. Comparisons to published per-lane capacities should
+  allow for that, and for two-wheelers packing more vehicles into the same width.
+- **The network registration is a translation only.** It corrects a real offset between
+  OSM and the drone GPS fix, but it cannot fix genuine geometry errors in OSM itself, and
+  a translation-only fit is exactly what produced the 91 m false answer described in
+  §11.2. Any re-run at a new site should check the junction-node residual, not only the
+  fitted objective.
+- **Lane index from lateral offset assumes a nominal 3.3 m lane.** On a carriageway used
+  as a continuum the index is a position band, not a painted lane.
 - **Telemetry cannot be trusted for scale.** `rel_alt` was off by 34%. The pipeline now
   calibrates rather than trusts, but this needs a size prior to work at all.
 
 ---
 
-## 12. Future work
+## 14. Future work
 
 In priority order, based on what the measurements above actually show:
 
 1. **Aerial-pretrained detection weights.** VisDrone carries `pedestrian`, `motor`,
-   `tricycle` and `awning-tricycle` — the last two are essentially auto-rickshaw, the
-   class we could not recover. DOTA-pretrained YOLO-OBB adds oriented boxes, which matter
-   because vehicles sit at arbitrary angles and axis-aligned boxes inflate measured
-   footprint (our pedestrians measure 1.68 m for this reason).
+   `tricycle` and `awning-tricycle` — the last two are essentially auto-rickshaw, which we
+   currently recover from measured size rather than detect directly; a real class would
+   make the assignment per-object rather than statistical. DOTA-pretrained YOLO-OBB adds
+   oriented boxes, which would remove the ill-conditioned case in the L/W solve entirely
+   and stop axis-aligned boxes inflating small objects (our pedestrians measure 0.97 m
+   against a true ~0.5 m for this reason).
 2. **Re-architect the tracker.** Decouple detection from tracking so tiled inference is
    possible at all, associate in the metric frame rather than image space, and add
    appearance re-ID across occlusion. This is what fixes the 70% fragmentation, and

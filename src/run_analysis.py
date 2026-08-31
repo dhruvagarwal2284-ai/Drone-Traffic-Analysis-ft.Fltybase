@@ -16,6 +16,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import aggregate as agg        # noqa: E402
 import attributes as attrmod   # noqa: E402
 import conflicts as cf          # noqa: E402
 import objects as objmod        # noqa: E402
@@ -110,6 +111,21 @@ def main(tag="intersection", video="Intersection_Merged-002",
     attrs = pd.read_parquet(ap) if ap.exists() else None
     objs = objmod.build(traj, moves, attrs, sev, fps)
     objs.to_parquet(out / f"objects_{tag}.parquet", index=False)
+
+    print("aggregate insight ...", flush=True)
+    lanes = [agg.lanes_for_leg(traj, legs, i) for i in range(len(legs["names"]))]
+    lanes = [L for L in lanes if L]
+    queues = {}
+    for i, nm in enumerate(legs["names"]):
+        Q = agg.queue_length(traj, legs, i)
+        if not Q.empty:
+            queues[nm] = {"t": Q.t.tolist(), "queue_m": Q.queue_m.tolist(),
+                          "max_m": round(float(Q.queue_m.max()), 1),
+                          "p85_m": round(float(Q.queue_m.quantile(.85)), 1),
+                          "mean_m": round(float(Q.queue_m.mean()), 1)}
+    fd = agg.edie(traj, legs, axis_leg=1)
+    ic = agg.interval_counts(moves)
+    dv = agg.directional_volumes(moves)
 
     print("anomalies ...", flush=True)
     anom = ins.anomalies(traj)
@@ -225,6 +241,22 @@ def main(tag="intersection", video="Intersection_Merged-002",
                                "a_min_ms2", "distance_m", "movement", "n_conflicts"]
                               if c in objs]],
             "plate_feasibility": attrmod.plate_requirements(),
+        },
+        "aggregate": {
+            "speed_field": agg.speed_field(traj),
+            "lanes": lanes,
+            "queues": queues,
+            "fundamental": {
+                "summary": agg.summarise(fd),
+                "points": ([{"dir": r.dir, "s": float(r.sbin), "t": float(r.tbin),
+                             "q": round(float(r.flow_vph), 1),
+                             "k": round(float(r.density_vpkm), 2),
+                             "v": round(float(r.speed_kph), 1),
+                             "occ": round(float(r.occupancy_pct), 1)}
+                            for r in fd.itertuples()] if not fd.empty else []),
+            },
+            "interval_counts": (ic.to_dict("records") if not ic.empty else []),
+            "directional_volumes": (dv.to_dict("records") if not dv.empty else []),
         },
         "congestion": cong, "cycle": cyc,
         "paths": paths,

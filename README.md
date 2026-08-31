@@ -23,6 +23,8 @@ Intersection video, 120 s window (t = 240–360 s) at 10 fps, **687 road users**
 | Anomalies | 48 (36 contraflow, 12 stopped in carriageway) |
 | Object attributes | 687 with colour, 594 with measured dimensions (86%), 86.5% achromatic fleet |
 | Per-object kinematics | 687/687 in SI; 99.6% physically plausible, 3 flagged |
+| Map-native | 96.6% of samples matched to OSM links; registration residual 1.97 m |
+| Aggregate | max flow 2,266 veh/h/lane at 110 veh/km/lane; max queue 72 m; 2.08% of samples over 40 km/h |
 
 ### The three findings worth defending
 
@@ -54,6 +56,8 @@ trajectories.py  metric projection, scale self-calibration, Kalman/RTS smoothing
 conflicts.py     PET + TTC surrogate safety measures
 attributes.py    measured L/W (oriented-dims solve), colour, size class, body type
 objects.py       per-object record: identity + kinematics + movement + conflicts
+aggregate.py     interval counts, speed field, lane discovery, queues, Edie flow/density
+geo.py           georeferencing, OSM registration, map-matching, GeoJSON export
 insights.py      leg discovery, turning movements, speeds, delay, anomalies
 congestion.py    detector-free congestion signal over the full recording
 run_analysis.py  end-to-end -> out/report_<tag>.json
@@ -71,6 +75,7 @@ python src/track.py        --tag intersection --t0 240 --dur 120 --fps 10
 python src/congestion.py   --video Intersection_Merged-002 --tag intersection
 python src/run_analysis.py --tag intersection --t0 240 --fps 10
 python run_attrs.py                      # object attributes (one video pass)
+python run_geo.py                        # map-native: georeference + map-match
 python src/build_dashboard.py intersection
 python src/overlay.py      --tag intersection --seconds 60
 ```
@@ -111,6 +116,18 @@ One row per road user (687 × 31): identity, kinematics, movement and interactio
 | quality | `imputed_frac`, `n_samples`, `kinematics_plausible` |
 
 ---
+
+## Demo outputs (`demo/`)
+
+| file | what it is |
+|---|---|
+| `example_output.mp4` | 60 s overlay: box by body type, label = body type + measured length + km/h, plus a chip of the vehicle's measured paint colour |
+| `conflict_*.mp4` | six evidence clips cropped to the worst interactions |
+| `dashboard.html` | the full dashboard, self-contained |
+| `trajectories.parquet` | per-(track, frame) trajectory table |
+| `attributes.parquet` | per-track colour, measured L/W, body type, size class |
+| `objects.parquet` | per-object record (identity + kinematics + movement + conflicts) |
+| `report.json` | every figure in the write-up, machine-readable |
 
 ## Validation
 
