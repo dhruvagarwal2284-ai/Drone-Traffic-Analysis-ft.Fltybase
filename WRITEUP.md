@@ -69,29 +69,51 @@ PET/TTC, and at 40 km/h a vehicle moves only 1.1 m between samples, so associati
 
 ## 4. Detection & tracking
 
-*Revised since the original submission — see §15. Numbers below are the
-current (VisDrone) run; the original COCO run is archived in
-`out/exp4/report_intersection_COCO.json` and `NUMBERS-CHANGELOG.md`.*
+*Revised twice since the original submission — see §15 (detector) and §16
+(tracker). Numbers below are the current (VisDrone detector + metric-frame
+tracker) run; prior runs are archived in `out/exp4/report_intersection_COCO.json`,
+`out/exp5/report_intersection_BYTETRACK.json`, and `NUMBERS-CHANGELOG.md`.*
 
-- **Model:** VisDrone-pretrained `dronefreak/visdrone-yolov11s` (AGPL-3.0),
-  `imgsz=1920`, `conf=0.20`, FP16 — adopted over the original COCO YOLO11x
-  because COCO routinely calls an overhead two-wheeler a car (confirmed on
-  this footage in `EXP1.md`: motorcycle share of detections 8.3%→55.9%
-  swapping detectors on the same 20 frames, same pixel positions).
-- **Tracker:** ByteTrack, image-space association, tuned to `track_buffer=90`
-  (9 s lost-track memory at 10 fps, vs the 3 s default) and `match_thresh=0.9`
-  (vs 0.8 default). The class fix roughly doubles the per-frame detection
-  field, which fragmented tracks more under the default tracker settings;
-  `EXP3.md` found this pairing cuts duplicate tracks 541→402 without
-  reshuffling the count elsewhere (BoT-SORT and ReID were both tried and
-  both did worse).
-- **Classes used:** `pedestrian`/`people`→person, `bicycle`→bicycle,
-  `car`/`van`→car, `truck`→truck, `bus`→bus, `motor`→motorcycle,
-  `tricycle`/`awning-tricycle`→**autorickshaw** — a new class, recovered
-  directly from the detector rather than inferred purely from measured size
-  (§9.1 still applies as the size-based cross-check).
-- **Result:** 239,960 detections → 1,910 raw tracks → **731 road users** after
-  filtering (was 112,144 → 1,544 → 687 under COCO).
+Detection and tracking are now two separate stages, not one fused call:
+
+- **Stage A — `detect.py` (detector only).** VisDrone-pretrained
+  `dronefreak/visdrone-yolov11s` (AGPL-3.0), `imgsz=1920`, `conf=0.20`, FP16 —
+  adopted over the original COCO YOLO11x because COCO routinely calls an
+  overhead two-wheeler a car (confirmed on this footage in `EXP1.md`:
+  motorcycle share of detections 8.3%→55.9% swapping detectors on the same 20
+  frames, same pixel positions). Runs per frame over the already-cut window,
+  never re-cuts video, and writes one row per detection with **no track id** —
+  `x_m,y_m,w_m,h_m` ground-plane metres already projected, via the same
+  mid-height calibration `trajectories.py` uses, so tracking has nothing left
+  to project. **Classes used:** `pedestrian`/`people`→person, `bicycle`→
+  bicycle, `car`/`van`→car, `truck`→truck, `bus`→bus, `motor`→motorcycle,
+  `tricycle`/`awning-tricycle`→**autorickshaw**.
+- **Stage B — `mtrack.py` (metric-frame association).** A from-scratch
+  tracker, numpy/scipy/pandas only: a constant-velocity Kalman filter
+  `(x,y,vx,vy)` **per track, in ground-plane metres** — no pixels, no
+  telemetry/homography needed inside the tracker at all. Per-frame
+  association is two-stage (ByteTrack-style: `conf≥0.5` first, then the
+  rest), solved with `scipy.optimize.linear_sum_assignment`. The gate is
+  Mahalanobis distance on the filter's own innovation covariance, which
+  **inflates on every unmatched frame** — the acceptance radius grows through
+  an occlusion by itself, no separate buffer-growth schedule needed. Cost =
+  position distance + a class-group ordinal term + a footprint-size term (the
+  size term stands in for an appearance cue the detector's raw output
+  doesn't otherwise provide). On top of that soft cost sits a **hard
+  class-group gate**: a detection may only match a track in the same group —
+  `{person}`, `{bicycle}`, `{motorcycle, autorickshaw}`, `{car, bus, truck}`
+  — added in `EXP4-FIX.md` after `EXP4-QA.md` found a soft class cost alone
+  let 155/678 raw confirmed tracks absorb a stray pedestrian detection into a
+  vehicle track. **Occlusion buffer:** a confirmed track tolerates up to
+  `max_lost_s=6.0` (60 frames at 10 fps) of consecutive misses before it is
+  dropped; a *tentative* track (not yet at `min_hits=3`) dies on its first
+  miss, so confirmed hits are always consecutive.
+- **Result:** 269,645 detections (shared by both stages) → 796 raw confirmed
+  tracks → **602 road users** after dedup (was 731 under the fused
+  detector+ByteTrack run, 687 under COCO). `track.py` (fused detect+ByteTrack,
+  image-space association) remains available as a documented alternative —
+  same detector, same classes, different tracker — for anyone who wants the
+  prior default back.
 
 **Handling camera movement — the finding that simplified everything.** The telemetry shows
 the drone is effectively a fixed camera:
@@ -109,12 +131,18 @@ each file is two concatenated DJI clips, contiguous in time; analysis stays insi
 
 **Handling occlusion.** A large tree permanently occludes part of the junction core.
 Tracks are interpolated through gaps and every such row is flagged `imputed=True` —
-**10.7%** of positions (was 6.7% under COCO; the denser VisDrone detection field means
-more frames need bridging) — so downstream metrics can exclude or discount them. A
+**22.3%** of positions (was 10.7% under ByteTrack, 6.7% under COCO — the metric-frame
+tracker's growing Kalman gate now bridges occlusion *continuously* rather than losing
+the track and restarting it, so more rows fall inside a bridged gap; this is the
+mechanism behind the traversing-track gain below, not a quality regression — no
+increase in implausible kinematics, §12). A first-class `reemerged` column flags the
+2.0 s after a track exits such a gap — the RTS-smoothed velocity right at that edge is
+the track's least trustworthy sample — and `conflicts.py` excludes those rows from
+PET/TTC candidacy the same way it already excludes `imputed` ones (§6, §16). A
 separate deduplication pass removes tracks that are a second copy of another (two ids
-within 2.2 m for >55% of shared frames): **402 removed** (was 80 under COCO, before the
-tracker tuning of §15/`EXP3.md` cut it back from 541). Left in, these produce PET ≈ 0 s
-and would dominate the conflict ranking with pure artefact.
+within 2.2 m for >55% of shared frames): **180 removed** (was 402 under ByteTrack, 80
+under COCO). Left in, these produce PET ≈ 0 s and would dominate the conflict ranking
+with pure artefact.
 
 ---
 
@@ -168,8 +196,8 @@ within ~7%, so neither was "wrong", but the VisDrone input is provably cleaner.)
 A constant-velocity Kalman filter with a Rauch–Tung–Striebel smoother runs over each
 path. This is not cosmetic: accelerations from raw finite differences of noisy positions
 are pure noise, and the safety metrics depend on them. Outputs: position, velocity,
-speed, heading, acceleration — 204,632 rows across 731 road users (was 113,620 rows
-across 687 under COCO).
+speed, heading, acceleration — 253,972 rows across 602 road users (was 204,632 rows
+across 731 under ByteTrack, 113,620 rows across 687 under COCO; §16).
 
 ### Scene geometry, discovered from motion
 
@@ -207,53 +235,59 @@ localises where in the junction they concentrate.
 
 ## 7. Traffic insights — actual outputs
 
-*Revised since the original submission (§15) — 731 road users, up from 687.*
+*Revised twice since the original submission — the detector (§15) then the
+tracker (§16). Modal split is by track; §16 also reports a fragmentation-independent
+"presence share" cut, which reads differently for pedestrians — see there.*
 
 ```
-Road users tracked              731
-Trajectory samples          204,632
-Median speed                3.3 km/h      (p99  37.3 km/h)
-Traversing tracks               243
+Road users tracked              602
+Trajectory samples          253,972
+Median speed                3.5 km/h      (p99  37.1 km/h)
+Traversing tracks               305
 
-Modal split
-  two-wheeler               43.8 %
-  pedestrian                27.1 %
-  car                       25.3 %
-  auto-rickshaw               1.8 %
-  truck                       1.2 %
+Modal split (by track)
+  two-wheeler               46.2 %
+  car                       29.1 %
+  pedestrian                19.1 %
+  auto-rickshaw               3.7 %
+  truck                       1.5 %
   bus                         0.5 %
 
-Turning movements (243 traversing)
-  through                     169
-  left                         28
-  right                        24
-  u-turn                       22
+Turning movements (305 traversing)
+  through                     186
+  left                         51
+  right                        39
+  u-turn                       29
 
 Delay
-  mean stopped time         13.64 s
-  p85 stopped time          20.90 s
-  fraction ever stopped     51.4 %
-  worst movement (by sample count)   W→SE, 5.4 s mean stopped (n=67)
-  worst movement (raw)              NE→SE, 51.3 s mean stopped — but n=2
-                                     tracks, a rare movement dominating a
-                                     thin mean, not a robust estimate
+  mean stopped time         19.85 s
+  p85 stopped time          45.14 s
+  fraction ever stopped     51.2 %
+  worst movement (by sample count)   W→W (u-turn), 13.3 s mean stopped (n=12)
+  best-sampled through movements     W→SE 5.6 s (n=77), SE→W 2.1 s (n=109) —
+                                     through traffic clears fast; delay now
+                                     concentrates in the low-volume turning/
+                                     u-turn movements, not one thin outlier
 
-Conflicts (1,772 interacting pairs)
-  critical  (< 1.0 s)          37
-  serious   (< 1.5 s)          61
-  conflict  (< 3.0 s)         404
-  minor     (3–5 s)         1,270
+Conflicts (1,363 interacting pairs, post re-emergence filter — §16)
+  critical  (< 1.0 s)          27
+  serious   (< 1.5 s)          40
+  conflict  (< 3.0 s)         295
+  minor     (3–5 s)         1,001
 
-  two-wheeler ↔ two-wheeler   175
-  car ↔ two-wheeler           173
-  car ↔ car                    51
-  two-wheeler ↔ pedestrian     12
+  two-wheeler ↔ two-wheeler   162
+  car ↔ two-wheeler           128
+  car ↔ car                    25
+  two-wheeler ↔ pedestrian     11
 
 Inferred signal cycle       116 s          (autocorrelation r = 0.18, unchanged —
                                             congestion.py is detector-free)
 ```
 
-(Original COCO run: 687 road users, 113,620 samples, median speed 7.6 km/h,
+(ByteTrack run: 731 road users, 204,632 samples, median speed 3.3 km/h, 243
+traversing tracks, modal split two-wheeler 43.8% / pedestrian 27.1% / car
+25.3% / auto-rickshaw 1.8%, 1,772 conflicts pre-filter (1,506 post-filter).
+Original COCO run: 687 road users, 113,620 samples, median speed 7.6 km/h,
 204 traversing tracks, modal split two-wheeler 45.1% / car 31.4% / pedestrian
 19.5% / bus 2.6% / truck 1.3%, 1,133 conflicts. Full comparison:
 `NUMBERS-CHANGELOG.md`.)
@@ -263,9 +297,9 @@ re-clustering over the larger track population, see §5):
 
 | from ↓ / to → | NE | SE | W |
 |---|---|---|---|
-| **NE** | 5 | 7 | 26 |
-| **SE** | 2 | 8 | 67 |
-| **W** | 17 | 102 | 9 |
+| **NE** | 4 | 17 | 32 |
+| **SE** | 19 | 13 | 77 |
+| **W** | 22 | 109 | 12 |
 
 This is the turning-movement count a junction study normally pays a crew to tally by hand.
 
@@ -292,10 +326,10 @@ location* — the prevailing heading and speed in each 6 m cell, as a vector mea
 reports departures from it. Nothing below was configured in advance:
 
 ```
-84 anomalies                        (was 48 under COCO)
-  contraflow                   61     (>120° against the local prevailing flow)
-  stopped in carriageway       21     (stationary >8 s mid-scene, having moved before)
-  hard braking                  2     (< -3 m/s²)
+75 anomalies                        (was 84 ByteTrack, 48 COCO)
+  contraflow                   33     (>120° against the local prevailing flow)
+  stopped in carriageway       42     (stationary >8 s mid-scene, having moved before)
+  hard braking                   0     (< -3 m/s²)
 ```
 
 Because the normal model is estimated from the data, a behaviour nobody thought to
@@ -329,20 +363,22 @@ were fitted:
 
 | body type | n | measured L | real-world L |
 |---|---|---|---|
-| bus | 1 | 5.75 m | 10.0–12.0 m *(n=1, not reliable)* |
-| van / LCV | 3 | 5.12 m | 4.8–6.0 m *(n=3, thin)* |
-| SUV / MUV | 8 | 4.63 m | 4.4–4.9 m |
-| sedan | 24 | 4.33 m | 4.2–4.6 m |
-| truck | 8 | 4.11 m | 6.0–10.0 m |
-| hatchback | 99 | 3.64 m | 3.6–4.0 m |
-| **auto-rickshaw** | 29 | **2.58 m** | 2.6–2.9 m |
-| two-wheeler | 328 | 1.45 m | 1.8–2.0 m |
+| bus | 3 | 6.05 m | 10.0–12.0 m *(n=3, thin)* |
+| van / LCV | 2 | 5.28 m | 4.8–6.0 m *(n=2, thin)* |
+| SUV / MUV | 6 | 4.76 m | 4.4–4.9 m *(n=6, thin)* |
+| sedan | 33 | 4.28 m | 4.2–4.6 m |
+| truck | 9 | 3.79 m | 6.0–10.0 m |
+| hatchback | 99 | 3.70 m | 3.6–4.0 m |
+| **auto-rickshaw** | 23 | **2.71 m** | 2.6–2.9 m |
+| two-wheeler | 294 | 1.47 m | 1.8–2.0 m |
 
-(Was bus 13/9.83 m, van/LCV 10/5.16 m, truck 7/5.09 m, SUV/MUV 23/4.78 m, sedan
-35/4.26 m, hatchback 67/3.85 m, auto-rickshaw 38/2.59 m, two-wheeler 311/1.67 m
-under COCO — the VisDrone run has a genuinely different, larger road-user mix, so
-per-class sample sizes shifted along with the counts; bus and van/LCV in
-particular are now thin samples and should not be over-read.)
+(Was bus 1/5.75 m, van/LCV 3/5.12 m, SUV/MUV 8/4.63 m, sedan 24/4.33 m, truck
+8/4.11 m, hatchback 99/3.64 m, auto-rickshaw 29/2.58 m, two-wheeler 328/1.45 m
+under ByteTrack; bus 13/9.83 m, van/LCV 10/5.16 m, truck 7/5.09 m, SUV/MUV
+23/4.78 m, sedan 35/4.26 m, hatchback 67/3.85 m, auto-rickshaw 38/2.59 m,
+two-wheeler 311/1.67 m under COCO — each tracker swap changes the road-user
+population and its per-class sample sizes; bus, van/LCV and SUV/MUV are thin
+samples this run and should not be over-read.)
 
 **This reverses a limitation reported at the previous level.** Auto-rickshaws were
 declared unrecoverable because naive footprints gave 2.13 m against 2.07 m for
@@ -353,9 +389,9 @@ real detector class — §4 — so this size-based separation is now a cross-che
 detector's own class label, not the only way to find it.)
 
 Width is the ill-conditioned half of the solve and measures ~30% wide against known
-vehicles; it is reported but only breaks ties in body-type assignment. **675 of 731**
-objects (92%) received dimensions; the rest were ill-conditioned throughout (was 594 of
-687, 86%, under COCO).
+vehicles; it is reported but only breaks ties in body-type assignment. **579 of 602**
+objects (96%) received dimensions; the rest were ill-conditioned throughout (was 675 of
+731, 92%, under ByteTrack; 594 of 687, 86%, under COCO).
 
 ### 9.2 Colour — two-stage white balance
 
@@ -375,16 +411,17 @@ Colour is sampled from the central patch only (the roof — a full box contains 
 shadow and often a neighbour) and taken as a median across every frame of the track.
 
 ```
-dark grey      35.2 %        red      5.2 %
-silver / grey  28.6 %        blue     2.6 %
-white          18.1 %        green    1.9 %
-black           6.4 %        orange   1.2 %
+dark grey      36.0 %        red      6.1 %
+silver / grey  31.2 %        blue     1.8 %
+white          15.9 %        green    1.0 %
+black           6.5 %        orange   0.7 %
                               other    0.8 %  (violet/cyan/yellow)
-                              → 88.2 % achromatic
+                              → 89.7 % achromatic
 ```
 
-(Was 33.2/29.0/14.4/9.9 dark grey/silver/white/black, 86.5% achromatic, under COCO — a
-larger, VisDrone-detected road-user population, not a change in the colour method.)
+(Was 35.2/28.6/18.1/6.4 dark grey/silver/white/black, 88.2% achromatic, under ByteTrack;
+33.2/29.0/14.4/9.9, 86.5% achromatic, under COCO — each tracker swap changes the
+road-user population, not the colour method.)
 
 That achromatic share matches the Indian market. The split *within* the greys is a
 brightness judgement under uncontrolled evening light and should not be over-read.
@@ -402,21 +439,21 @@ pure noise.
 
 | body type | mean speed | p85 top speed | peak accel | peak braking |
 |---|---|---|---|---|
-| van / LCV | 23.5 km/h | 25.5 km/h | 0.48 m/s² | −0.35 m/s² *(n=3, thin)* |
-| hatchback | 17.4 km/h | 37.3 km/h | 1.02 m/s² | −1.02 m/s² |
-| sedan | 16.5 km/h | 37.6 km/h | 1.06 m/s² | −1.09 m/s² |
-| two-wheeler | 14.5 km/h | 36.0 km/h | 0.73 m/s² | −0.70 m/s² |
-| bus | 14.1 km/h | 27.7 km/h | 1.54 m/s² | −1.14 m/s² *(n=1)* |
-| SUV / MUV | 12.6 km/h | 27.9 km/h | 1.17 m/s² | −1.04 m/s² |
-| auto-rickshaw | 12.2 km/h | 32.7 km/h | 0.59 m/s² | −0.47 m/s² |
-| truck | 6.8 km/h | 25.9 km/h | 0.86 m/s² | −0.70 m/s² |
-| pedestrian | 3.5 km/h | 5.4 km/h | 0.21 m/s² | −0.22 m/s² |
+| sedan | 18.9 km/h | 33.9 km/h | 1.05 m/s² | −1.10 m/s² |
+| hatchback | 18.2 km/h | 33.7 km/h | 1.03 m/s² | −0.93 m/s² |
+| two-wheeler | 16.0 km/h | 33.4 km/h | 0.95 m/s² | −1.05 m/s² |
+| bus | 14.1 km/h | 33.0 km/h | 1.48 m/s² | −1.05 m/s² *(n=3, thin)* |
+| auto-rickshaw | 13.7 km/h | 30.6 km/h | 0.70 m/s² | −0.42 m/s² |
+| van / LCV | 11.3 km/h | 20.8 km/h | 0.92 m/s² | −1.00 m/s² *(n=2, thin)* |
+| truck | 8.0 km/h | 27.3 km/h | 0.79 m/s² | −0.42 m/s² |
+| SUV / MUV | 5.3 km/h | 23.2 km/h | 0.61 m/s² | −0.44 m/s² *(n=6, thin)* |
+| pedestrian | 5.1 km/h | 14.6 km/h | 0.73 m/s² | −0.62 m/s² |
 
-(Was SUV/MUV fastest at 20.0 km/h and buses stationary throughout — 0.0 km/h — under
-COCO. VisDrone's larger, different sample per body type shuffles the ranking; van/LCV
-and bus here are single-digit samples and not a robust ranking on their own. Buses no
-longer read as "stationary throughout" mainly because there is only one bus track this
-run, not a change in queueing behaviour.)
+(Was van/LCV fastest at 23.5 km/h under ByteTrack, SUV/MUV fastest at 20.0 km/h and
+buses stationary throughout under COCO. Each tracker swap reshuffles the ranking
+through a different sample per body type — van/LCV, bus and SUV/MUV are thin samples
+this run (n≤6) and not a robust ranking on their own; sedan/hatchback/two-wheeler,
+with the largest samples, are the reliable comparison.)
 
 ### 9.4 The object record
 
@@ -424,19 +461,21 @@ run, not a change in queueing behaviour.)
 and interaction. Example rows:
 
 ```
-silver/grey hatchback  L 3.44 m  mean 18.0  max 35.7 km/h  brake -1.79 m/s²  216 m  W→W  8 conflicts
-silver/grey hatchback  L 3.47 m  mean 22.7  max 38.0 km/h  brake -1.30 m/s²  213 m  W→W 14 conflicts
-red two-wheeler        L 1.22 m  mean 15.6  max 32.8 km/h  brake -1.73 m/s²  208 m  W→W 18 conflicts
+white two-wheeler      L 1.56 m  mean 11.2  max 22.2 km/h  brake -1.12 m/s²  229 m  W→SE  26 conflicts
+dark grey hatchback    L 3.15 m  mean 18.0  max 31.5 km/h  brake -1.12 m/s²  219 m  W→W   1 conflict
+silver/grey hatchback  L 3.54 m  mean 18.0  max 35.7 km/h  brake -1.75 m/s²  216 m  W→W   8 conflicts
 ```
 
-(Was silver/grey hatchback 3.96 m / white hatchback 3.94 m / silver/grey sedan 4.27 m,
-229/215/214 m, under COCO — the ranked-by-distance top rows are a different set of
-tracks in a larger population, not a change in what's reported.)
+(Was silver/grey hatchback 3.44/3.47 m + red two-wheeler 1.22 m, 216/213/208 m, under
+ByteTrack; silver/grey hatchback 3.96 m / white hatchback 3.94 m / silver/grey sedan
+4.27 m, 229/215/214 m, under COCO — the ranked-by-distance top rows are a different
+set of tracks each time, not a change in what's reported.)
 
-Validation: 731 objects, **0** above 120 km/h, **99.86%** (730/731) with peak acceleration
-inside ±4 m/s², median distance travelled 28.5 m, **731 with colour**, **675 with
-dimensions** (92%). (Was 687 objects, 99.56% (684/687), median distance 16.2 m, 687 with
-colour, 594 with dimensions (86%), under COCO.)
+Validation: 602 objects, **0** above 120 km/h, **100%** (602/602) with peak acceleration
+inside ±4 m/s², median distance travelled 77.4 m, **602 with colour**, **579 with
+dimensions** (96%). (Was 731 objects, 99.86% (730/731), median distance 28.5 m, 731 with
+colour, 675 with dimensions (92%), under ByteTrack; 687 objects, 99.56% (684/687),
+median distance 16.2 m, 687 with colour, 594 with dimensions (86%), under COCO.)
 
 A note on peak acceleration. The RTS smoother has no data beyond a track's ends, so the
 first and last samples carry an edge transient that surfaces as a spurious peak — raw
@@ -500,15 +539,15 @@ notice the corridor is 28 m wide, bidirectional and multi-lane. Splitting on the
 velocity along the axis, and dividing by an equivalent lane count taken from each stream's
 own measured width, brings it into range:
 
-| quantity | value | (was, COCO) |
-|---|---|---|
-| Max flow | **1,503 veh/h/lane** | 2,266 |
-| Density at max flow | 78.3 veh/km/lane | 110.0 |
-| Speed at max flow | 19.2 km/h | 20.6 |
-| Max density observed | 159.3 veh/km/lane | 207.4 |
-| Min speed observed | 4.9 km/h | 4.9 |
-| Max occupancy | 33.0 % | 76.3 |
-| Equivalent lanes | inbound 7.0 · outbound 5.43 | inbound 5.7 · outbound 3.33 |
+| quantity | value | (was, ByteTrack) | (was, COCO) |
+|---|---|---|---|
+| Max flow | **1,556 veh/h/lane** | 1,503 | 2,266 |
+| Density at max flow | 75.0 veh/km/lane | 78.3 | 110.0 |
+| Speed at max flow | 20.7 km/h | 19.2 | 20.6 |
+| Max density observed | 170.9 veh/km/lane | 159.3 | 207.4 |
+| Min speed observed | 5.9 km/h | 4.9 | 4.9 |
+| Max occupancy | 34.1 % | 33.0 | 76.3 |
+| Equivalent lanes | inbound 6.92 · outbound 5.65 | inbound 7.0 · outbound 5.43 | inbound 5.7 · outbound 3.33 |
 
 Correction to a claim in `EXP2.md`: these flow/density figures are computed directly
 from raw trajectories and leg geometry (`aggregate.py`'s `edie()`), not from the
@@ -531,14 +570,14 @@ contiguous stopped vehicles, ending at the first gap wider than 14 m.
 
 | approach | max queue | p85 | mean |
 |---|---|---|---|
-| NE (was N) | 50.6 m | 50.2 m | 50.0 m |
-| SE | 63.0 m | 43.8 m | 40.0 m |
-| W | 70.3 m | 68.5 m | 48.9 m |
+| NE | 51.1 m | 50.0 m | 49.2 m |
+| SE | 47.0 m | 44.7 m | 39.4 m |
+| W | 67.9 m | 65.9 m | 46.6 m |
 
-(Was N 26.6/22.0/16.4, SE 44.1/32.1/29.8, W 71.7/43.7/38.1 m under COCO. Queues are
-longer and more persistent across the board — consistent with the higher conflict and
-delay counts elsewhere in this revision, not a measurement artefact specific to this
-table.)
+(Was NE/SE/W 50.6/63.0/70.3 m (max) under ByteTrack; N/SE/W 26.6/44.1/71.7 m (max)
+under COCO. SE's queue is markedly shorter under the metric-frame tracker (63.0→47.0 m)
+— consistent with fewer, more continuous SE tracks needing less stop-line back-fill
+to bridge fragmentation; W stays the longest queue either way.)
 
 A vehicle count cannot tell an engineer whether a queue blocks the junction upstream. A
 distance can, and it is the number a signal-timing decision actually consumes.
@@ -551,14 +590,16 @@ discipline a *measured* quantity:
 
 | approach | modes found | offsets (m) | discipline index | samples |
 |---|---|---|---|---|
-| NE (was N) | 2 | -0.51, 3.49 | 0.11 | 7,149 |
-| SE | 3 | -11.59, -3.59, 6.41 | 0.64 | 19,175 |
-| W | 3 | -8.04, 0.46, 3.46 | 0.50 | 22,909 |
+| NE | 2 | 1.13, 3.63 | 0.04 | 7,259 |
+| SE | 4 | -10.5, -2.5, 3.5, 7.5 | 0.47 | 20,396 |
+| W | 3 | -9.43, -0.93, 2.07 | 0.51 | 22,473 |
 
-(Was N 1 mode/8.1 m/n=3,345, SE 2 modes/0.75/n=14,381, W 3 modes/0.57/n=16,177 under
-COCO. The NE approach now resolves two lateral modes instead of one — more tracked
-road users at more offsets — with a low discipline index (0.11): people and
-two-wheelers are spread across it rather than following distinct lanes.)
+(Was NE 2 modes/-0.51,3.49/0.11/n=7,149, SE 3 modes/-11.59,-3.59,6.41/0.64/n=19,175,
+W 3 modes/-8.04,0.46,3.46/0.50/n=22,909 under ByteTrack; N 1 mode/8.1 m/n=3,345, SE 2
+modes/0.75/n=14,381, W 3 modes/0.57/n=16,177 under COCO. SE now resolves a fourth
+lateral mode with the metric-frame tracker's larger, more continuous sample — the
+lane-discipline finding (a continuum, not painted lanes) holds regardless of exactly
+how many modes the histogram resolves.)
 
 The discipline index is 1.0 for sharply separated lanes and 0 for a continuum. Where only
 one mode is found the index is undefined and reported as such, because a single mode means
@@ -571,28 +612,30 @@ measured — and the lanes are not interchangeable:
 
 | approach | lane | offset | share of approach | modal split |
 |---|---|---|---|---|
-| NE (was N) | 1 | -0.51 m | 45.0% | person 42%, two-wheeler 35%, car 14%, motorcycle 9% |
-| NE | 2 | 3.49 m | 55.0% | car 49%, two-wheeler 36%, person 9%, motorcycle 3% |
-| SE | 1 | -11.59 m | 15.0% | person 68%, car 13%, two-wheeler 13% |
-| SE | 2 | -3.59 m | 37.3% | two-wheeler 63%, car 30%, autorickshaw 6% |
-| SE | 3 | 6.41 m | 47.7% | two-wheeler 49%, car 35%, person 8%, truck 3% |
-| W | 1 | -8.04 m | 42.5% | two-wheeler 48%, car 32%, person 15% |
-| W | 2 | 0.46 m | 22.8% | car 52%, two-wheeler 34%, autorickshaw 12% |
-| W | 3 | 3.46 m | 34.7% | two-wheeler 45%, car 30%, person 14% |
+| NE | 1 | 1.13 m | 43.5% | person 48%, two-wheeler 42%, car 10% |
+| NE | 2 | 3.63 m | 56.5% | car 43%, two-wheeler 40%, person 15% |
+| SE | 1 | -10.5 m | 16.3% | person 63%, car 17%, two-wheeler 18% |
+| SE | 2 | -2.5 m | 31.1% | two-wheeler 64%, car 28%, autorickshaw 7% |
+| SE | 3 | 3.5 m | 16.1% | two-wheeler 50%, car 40%, autorickshaw 7% |
+| SE | 4 | 7.5 m | 36.5% | two-wheeler 57%, car 28%, person 10% |
+| W | 1 | -9.43 m | 41.9% | two-wheeler 51%, car 30%, person 17% |
+| W | 2 | -0.93 m | 20.5% | car 51%, two-wheeler 34%, autorickshaw 12% |
+| W | 3 | 2.07 m | 37.6% | two-wheeler 51%, car 30%, person 13% |
 
-(Was N one lane at 100% car 54%/2W 38%; SE two lanes 55%–46% split car/2W; W three
-lanes topping out at 78% car, one carrying 15.5% pedestrians — under COCO. VisDrone
-resolves an extra lane on the NE approach — see the discipline table above — and, with
-pedestrians now a real detected class at 27.1% overall share rather than undercounted,
-every approach shows a clearer pedestrian-in-carriageway lane: SE's lane 1 is **68%
-pedestrian**, the strongest single-lane skew in either run.)
+(Was NE two lanes 45%/55% person-42%/car-49%-led, SE three lanes 15%/37%/48%
+person-68%-led, W three lanes 43%/23%/35% two-wheeler-led under ByteTrack; N one lane
+at 100% car 54%/2W 38%, SE two lanes 55%–46% split car/2W, W three lanes topping out
+at 78% car under COCO. The metric-frame tracker now resolves a fourth SE lane; the
+pedestrian-kerbside-lane finding holds across both VisDrone-based runs — NE's lane 1
+and SE's lane 1 are both plurality-pedestrian either way — with the exact split
+shifting alongside each tracker's own modal-split change (§16).)
 
-Three things fall out of that table. The SE approach has one lane that is **68%
-pedestrian** and another that is **63% two-wheeler** — the pedestrian lane is the
-kerbside edge, where people are walking in the carriageway rather than on a footpath.
-On the W approach, two-wheelers dominate the outer lanes (48% and 45%) while cars
-concentrate centrally (52%). None of this is visible in an approach-level total, and
-all of it changes what an intervention should target.
+Three things fall out of that table. Both NE's lane 1 and SE's lane 1 are
+plurality-pedestrian (48% and 63%) — the kerbside edge, where people are walking in
+the carriageway rather than on a footpath — while the adjacent lane in each case is
+plurality two-wheeler or car. On the W approach, two-wheelers dominate the outer lanes
+(51% and 51%) while cars concentrate centrally (51%). None of this is visible in an
+approach-level total, and all of it changes what an intervention should target.
 
 **Classified counts by interval.** 55 movement x class x interval rows at 20-second
 resolution, plus 15 directional approach volumes in veh/h and PCU/h. This is the
@@ -608,9 +651,10 @@ that is lane-filtering, quantified, rather than asserted.
 
 85th-percentile speed per 4 m cell of carriageway, over 353 cells.
 
-Only **0.95%** of moving samples exceed 40 km/h and **0%** exceed
-50 km/h, against a peak cell 85th-percentile of 41.2 km/h. (Was 2.08% / 0.03% / 43.6 km/h
-under COCO — the finding strengthens, it does not reverse.)
+Only **0.96%** of moving samples exceed 40 km/h and **0%** exceed
+50 km/h, against a peak cell 85th-percentile of 41.0 km/h. (Was 0.95% / 0% / 41.2 km/h
+under ByteTrack, essentially unchanged by the tracker swap; 2.08% / 0.03% / 43.6 km/h
+under COCO — the finding strengthens there, it does not reverse.)
 
 **There is no speeding problem at this site.** It has a delay and conflict problem. An
 enforcement response aimed at speed would address neither -- which is exactly the kind of
@@ -684,21 +728,23 @@ signed lateral offset separates the two carriageways of a divided road and is wh
 lane index is built from.
 
 ```
-81.8 % of trajectory samples matched to a link      (was 96.6% under COCO)
-   primary      147,324   (Gopal Hari Deshmukh Marg)
-   residential   15,837
-   tertiary       4,166
+82.6 % of trajectory samples matched to a link      (was 81.8% ByteTrack, 96.6% COCO)
+   primary      180,830   (Gopal Hari Deshmukh Marg)
+   residential   24,727
+   tertiary       4,337
 ```
 
-**The match rate dropped, and it is a detection-coverage issue, not a registration
-one** — the per-sample residual actually improved slightly (1.79 m vs 1.97 m under
-COCO, §11.2's method unchanged). VisDrone's roughly 2× denser per-frame detection
+**The match rate dropped from COCO's 96.6%, and it is a detection-coverage issue, not
+a registration or tracking one** — the per-sample residual is unaffected by tracker
+choice (§11.2's method unchanged). VisDrone's roughly 2× denser per-frame detection
 field puts more boxes in places (verges, parked two-wheelers, pavement) outside the
-20 m road-network buffer than COCO's sparser, coarser field did. `EXP3.md` tried four
-tracker configurations specifically to see whether better association could recover
-this and found it could not (81.8–82.6% across all four) — this is now the strongest
-argument for the tracker re-architecture already listed as future work (§14), not
-just a fragmentation fix.
+20 m road-network buffer than COCO's sparser, coarser field did. Two independent
+tracker architectures now agree it is not fixable by association alone: `EXP3.md`'s
+four ByteTrack configurations (81.8–82.6%), `EXP4.md`'s metric-frame tracker pre-fix
+(81.3%), and this run's post-fix metric-frame tracker (82.6%) all land in the same
+81–83% band regardless of tracking approach. This closes the tracker re-architecture
+that was previously listed as future work (§14) — the remaining fix needs a
+road-buffer or detection-filtering change, not another tracker swap.
 
 ### 11.4 Per-lane metrics on real geometry
 
@@ -707,17 +753,20 @@ register speaking the same identifiers:
 
 | link | name | side | lane | vehicles | mean km/h | p85 km/h |
 |---|---|---|---|---|---|---|
-| `239844585` | Gopal Hari Deshmukh Marg | left | 1 | 193 | 14.1 | 24.0 |
-| `239844585` | Gopal Hari Deshmukh Marg | right | 1 | 176 | 13.7 | 26.8 |
-| `250162145` | Gopal Hari Deshmukh Marg | right | 1 | 156 | 20.7 | 32.7 |
-| `239844585` | Gopal Hari Deshmukh Marg | left | 2 | 151 | 3.0 | 8.2 |
-| `239844585` | Gopal Hari Deshmukh Marg | left | 3 | 142 | 3.3 | 5.5 |
-| `250162145` | Gopal Hari Deshmukh Marg | left | 1 | 141 | 18.2 | 30.3 |
-| `239844585` | Gopal Hari Deshmukh Marg | left | 4 | 116 | 2.2 | 5.0 |
-| `239844585` | Gopal Hari Deshmukh Marg | right | 2 | 112 | 12.3 | 25.2 |
+| `239844585` | Gopal Hari Deshmukh Marg | left | 1 | 247 | 13.8 | 23.2 |
+| `239844585` | Gopal Hari Deshmukh Marg | right | 1 | 241 | 13.7 | 26.4 |
+| `250162145` | Gopal Hari Deshmukh Marg | right | 1 | 211 | 20.7 | 32.6 |
+| `239844585` | Gopal Hari Deshmukh Marg | left | 2 | 191 | 3.4 | 8.8 |
+| `250162145` | Gopal Hari Deshmukh Marg | left | 1 | 187 | 18.2 | 30.4 |
+| `239844585` | Gopal Hari Deshmukh Marg | left | 3 | 177 | 3.8 | 6.4 |
+| `239844585` | Gopal Hari Deshmukh Marg | right | 2 | 170 | 14.3 | 27.9 |
+| `239844585` | Gopal Hari Deshmukh Marg | left | 4 | 156 | 2.7 | 5.1 |
 
-(Was 194/167/153/147/139/92 vehicles at 6.6–20.3 km/h mean under COCO, 6 rows over the
-≥5-vehicle filter; two more rows now clear it.) The lanes are not equivalent: on the
+(Was 193/176/156/151/142/141/116/112 vehicles at 2.2–20.7 km/h mean under ByteTrack;
+194/167/153/147/139/92 vehicles at 6.6–20.3 km/h mean under COCO, 6 rows over the
+≥5-vehicle filter. Each tracker's more continuous trajectories put more samples on the
+top links, raising every row's vehicle count without reordering which lanes are busiest.)
+The lanes are not equivalent: on the
 same link and carriageway, lane 1 and lane 2 differ by more than a factor of four in
 mean speed here. That is a per-lane operational fact invisible to any link-level average.
 
@@ -776,14 +825,15 @@ Included in the code package:
 No annotations exist, so accuracy cannot be quoted against ground truth. What *can* be
 checked is physics — each of these could have failed:
 
-| Check | Result | (was, COCO) |
-|---|---|---|
-| `\|accel\|` < 4 m/s² | **100%** of samples | 99.96% |
-| Speeds above 100 km/h | **0** | 0 |
-| Median car footprint | 4.00 m *(by construction)* | 4.00 m |
-| **Motorcycle footprint — never fitted to** | **1.85 m vs 1.99 m expected** | 2.12 m vs 1.99 m |
-| Positions interpolated through occlusion | 10.7%, flagged in the data | 6.7% |
-| Duplicate tracks detected and removed | 402 | 80 |
+| Check | Result | (was, ByteTrack) | (was, COCO) |
+|---|---|---|---|
+| `\|accel\|` < 4 m/s² | **100%** of samples | 100% | 99.96% |
+| Speeds above 100 km/h | **0** | 0 | 0 |
+| Median car footprint | 4.00 m *(by construction)* | 4.00 m | 4.00 m |
+| **Motorcycle footprint — never fitted to** | **1.85 m vs 1.99 m expected** | 1.85 m vs 1.99 m | 2.12 m vs 1.99 m |
+| Positions interpolated through occlusion | 22.3%, flagged in the data | 10.7% | 6.7% |
+| Duplicate tracks detected and removed | 180 | 402 | 80 |
+| `mtrack.py` determinism (2 independent runs) | 0/242,679 detection rows differ | n/a | n/a |
 
 ---
 
@@ -791,25 +841,42 @@ checked is physics — each of these could have failed:
 
 Stated plainly, because they bound how the numbers should be read.
 
-- **Conflict counts are an upper bound.** Only 243 of 731 tracks traversed the scene —
-  **67% are fragments** (was 70%/687, before the tracker tuning of §15 clawed back some
-  of the ground the class-fix detector's denser field cost), from the tree occlusion,
-  image-space association, and now also VisDrone's denser per-frame detections giving
-  the tracker more to confuse. The spatial pattern and class composition are the robust
-  reads; the absolute rate is not.
-- **OSM map-match rate dropped from 96.6% to 81.8%, and it is not fixable by tuning the
-  tracker.** Per-sample registration residual actually improved (1.79 m vs 1.97 m), so
-  this is a detection-coverage problem — more VisDrone boxes fall outside the road
-  network's 20 m buffer — not an association one; `EXP3.md` tried four tracker
-  configurations and none moved this number by more than a point. Flow, density and
-  queue figures downstream of map-matching should be read with this in mind. This
-  promotes the tracker re-architecture already listed in §14 from a fragmentation fix to
-  a prerequisite for those figures.
-- **Pedestrian counts were a floor under COCO — VisDrone alone recovers much of it.**
-  Adopting the class-fix detector (no tiling) lifted the pedestrian count from 134 to
-  198 (19.5%→27.1% share). Tiled inference on COCO frames previously measured **1.7–1.9×
-  more road users and 5–6× more pedestrians** than full-frame; whether tiling still adds
-  meaningfully on top of VisDrone has not been re-tested.
+- **Conflict counts still need a stated correction rule, now applied.** A re-emergence
+  exclusion (§16) removes the single biggest artefact — a track's least-trustworthy
+  sample, right where it exits an occlusion-bridged gap — but residual ID fragmentation
+  and PET/TTC's own exposure sensitivity remain. The spatial pattern and class
+  composition are the robust reads; the absolute rate is not.
+- **305 of 602 tracks traversed the scene (50.7%, up from 33.2%/731 under ByteTrack, was
+  67% fragments before that).** The metric-frame tracker's growing Kalman gate bridges
+  the tree's occlusion instead of losing the track and restarting it (§16) — the
+  re-architecture next-steps flagged in the prior revision are now done. Not fully
+  eliminated: the class-group hard gate itself costs back ~1.7 points by freeing
+  previously-absorbed detections into short-lived fragments instead of vehicle tracks
+  (`EXP4-FIX.md`).
+- **OSM map-match rate sits at 82.6%, confirmed not fixable by tracker choice at all.**
+  Per-sample registration residual is *better* than COCO's (1.79 m vs 1.97 m), so this
+  is a detection-coverage problem — more VisDrone boxes fall outside the road network's
+  20 m buffer — not an association one. Two independent tracker architectures now agree:
+  four ByteTrack configs (`EXP3.md`, 81.8–82.6%), the metric-frame tracker pre-fix
+  (`EXP4.md`, 81.3%), and this run (82.6%) all land in the same 81–83% band. Flow,
+  density and queue figures downstream of map-matching should be read with this in
+  mind; fixing it needs a road-buffer or detection-filtering change (§14), not another
+  tracker swap.
+- **Pedestrian modal split does not resolve cleanly across three different cuts.**
+  By-track share moved 27.1%→19.1% across the tracker swap (§16); a third,
+  fragmentation-independent cut — mean per-frame detection-class share from the shared
+  `detraw_intersection.parquet`, identical regardless of tracker — gives **17.8%**,
+  *lower* than either track-based number. Mechanism: a few fast-transiting two-wheelers
+  generate more total detection-frames over the video than a smaller number of
+  pedestrians, even ones that individually linger on screen far longer (median person
+  dwell rose 11.9s→50.4s under the new tracker — fewer, longer tracks, not more
+  presence). Track share and presence share answer different questions; see
+  `NUMBERS-CHANGELOG.md` Revision 2 for which to quote when. Separately, `EXP4-FIX.md`
+  found a real structural leak — a stray pedestrian detection absorbed into a vehicle
+  track under a purely-spatial gate (155/678 raw tracks pre-fix) — that the class-group
+  gate stops going forward, but cannot retroactively turn into confirmed pedestrian
+  tracks: closing that gap needs better pedestrian detection recall, not a
+  tracking-side change.
 - **Body type is inferred from size, not read from the vehicle.** Auto-rickshaws *are*
   now separable — the oriented-dimension solve of §9.1 gives 2.58 m against 1.45 m for
   two-wheelers, and VisDrone additionally detects `autorickshaw` as a real class (§4),
@@ -822,7 +889,7 @@ Stated plainly, because they bound how the numbers should be read.
   camera entirely. See §9.5 for the sensor tasking that would be required.
 - **Peak acceleration needs the percentile columns.** Smoother edge transients inflate the
   raw per-object maximum; use `a_p95_ms2` / `a_p05_ms2` and the `kinematics_plausible`
-  flag (1 of 731 objects fails it).
+  flag (0 of 602 objects fail it this run, was 1 of 731 under ByteTrack).
 - **Class error from domain gap — resolved, now a finding.** COCO was ground-level
   imagery; from directly overhead it routinely called a two-wheeler a car. This is fixed
   by adopting a VisDrone-pretrained detector (§4, §15); see `EXP1.md`–`EXP3.md` for the
@@ -938,3 +1005,102 @@ pipeline. Fixed with a seeded `numpy` generator; verified by rerunning both
 the standalone attribute build and the full `run_analysis.py` end-to-end
 twice each, 0 diffs in every case (0/687 attribute columns; 0/45,084
 report.json leaf keys).
+
+---
+
+## 16. Revision 2 — tracker re-architecture
+
+Since the previous revision, the default **tracker** changed from image-space
+ByteTrack (`track.py`) to a two-stage, metric-frame pipeline: `src/detect.py`
+(detector-only — same VisDrone weights, same classes, unchanged) followed by
+`src/mtrack.py` (a from-scratch tracker that associates boxes in ground-plane
+metres). Every number in §4, §7–§11 and §13 above is from the new run; the
+prior ByteTrack run is archived at `out/exp5/report_intersection_BYTETRACK.json`,
+and every changed figure is tabulated in `NUMBERS-CHANGELOG.md`'s "Revision 2"
+section. `track.py` remains available as a documented alternative (§4, README
+§Pipeline) — this is a tracker swap, not a removal.
+
+This was priority #1 in §14 of the previous revision, for a specific reason:
+adopting VisDrone raised the tracking stakes rather than lowering them (OSM
+match rate 96.6%→81.8%, duplicate tracks 80→402), and tuning ByteTrack's own
+knobs (`EXP3.md`) had already captured the cheap gains available without
+decoupling detection from tracking. Four experiments carried it out, in order:
+
+- **`EXP4A.md`** — Step A. Split `track.py`'s fused detect+ByteTrack into
+  `detect.py`, a detector-only stage writing one row per detection with no
+  track id, so a tracker downstream can associate boxes itself in whatever
+  frame it chooses. Also measured 2×2 SAHI-style tiling on top of the new
+  detector: **1.21× more detections for ~2.4× the compute**, well under the
+  1.7–1.9× tiling measured on COCO (§14 of the previous revision) — VisDrone's
+  native density already recovers much of what tiling was for — plus
+  bus/truck tile-seam artefacts (6.66×/0.87× count ratios, large vehicles
+  straddling a tile boundary). **Closed as a negative result; not adopted.**
+- **`EXP4.md`** — Step B. `mtrack.py`: a per-track constant-velocity Kalman
+  filter in ground-plane metres, Hungarian-assigned under a Mahalanobis gate
+  that grows through an occlusion by itself (no separate buffer schedule),
+  costed on class-group ordinal distance plus footprint-size distance (the
+  size term stands in for an appearance cue; ablating it raised duplicates
+  110→153, so it earns its keep). A 4-combo knob sweep confirmed the design
+  choices and picked `max_lost_s=6.0`. Verdict: **ADOPT** — duplicate tracks
+  402→110, traversing tracks 33.2%→52.4%, no kinematic regression versus
+  ByteTrack — but flagged two numbers that needed independent verification
+  before publication: critical conflicts rose ×4.8 (37→178) and pedestrian
+  share fell 27.1%→18.2%.
+- **`EXP4-QA.md`** — an independent QA pass (a different temp, deliberately
+  not the one that built the tracker) on exactly those two flags, before
+  either number could be quoted. Found the conflict spike is **81.5% a
+  re-emergence artefact**: a track's RTS-smoothed velocity is least
+  trustworthy in the instant it exits an occlusion-bridged gap, and that is
+  exactly the sample PET/TTC scores — excluding it drops mtrack's critical
+  count from 178 to 30, *below* ByteTrack's own recomputed count under the
+  same rule (29). The raw ×4.8 does not survive exposure normalisation alone
+  (still ~4–4.6× per 1,000 moving samples); it does resolve once combined
+  with the re-emergence filter (0.378 vs 0.363 critical per 1,000 samples —
+  statistically the same rate). The pedestrian drop is partly the same
+  fragmentation-reduction mechanism already seen for two-wheelers (person
+  median dwell 11.9s→50.4s — fewer, longer tracks) but also a real,
+  structural leak: 155 of 678 raw confirmed tracks absorbed a stray
+  pedestrian detection into a vehicle track, because the tracker's gate was
+  spatial-only with class as a soft, tunable cost. A `lambda_cls` 1.0→2.0
+  knob was tested and **rejected**: it moved the pedestrian share by nothing
+  (18.54%→18.52%) while breaking the motorcycle sanity check (−6.7%→−28%,
+  outside tolerance) and raising duplicates (110→151). Verdict: **ADOPT WITH
+  A CONFLICT POST-FILTER.**
+- **`EXP4-FIX.md`** — implemented both of EXP4-QA's prescriptions, since a
+  knob alone could not fix the pedestrian leak. **Fix 1**: a hard
+  class-group gate in `mtrack.py` — a detection may only match a track in
+  the same group (`{person}`, `{bicycle}`, `{motorcycle, autorickshaw}`,
+  `{car, bus, truck}`) — stops the leak outright (proven by a new
+  `test_class_hard_gate_blocks_person_into_car` test, including a gate-off
+  negative control that reproduces the leak). **Fix 2**: a first-class
+  `reemerged` trajectory column, true for 2.0s after a track exits an
+  imputed gap; `conflicts.py` excludes these rows from PET/TTC candidacy the
+  same way it already excludes `imputed` rows, applied identically to both
+  trackers so the comparison stays like-for-like.
+
+**The conflict fix fully resolves**: post-fix, the metric-frame tracker's
+critical count (27) is *below* the recomputed ByteTrack baseline (29) under
+the identical rule — the headline finding is "same safety signal, a cleaner
+tracker," not "tracking swap found five times more danger." **The pedestrian
+fix is honest but partial**: the class-group gate stops the leak going
+forward (raw confirmed tracks 678→796, +118, as previously-absorbed
+detections fragment into short-lived tracks of their own) but cannot
+manufacture a confirmed pedestrian track out of detections too short-lived to
+reach `min_hits=3` on their own — final pedestrian share moved 18.2%→19.1%
+against a target of "within ~5pts of ByteTrack's 27.1%," an 8-point gap that
+needs a detection-recall fix (§14), not a tracking-side one. 4 of 5 adoption
+bars passed cleanly (duplicates, traversing, motorcycle check, conflicts);
+pedestrian share is the one documented shortfall, not silently dropped.
+
+A third, fragmentation-independent modal-split cut was computed for this
+regeneration, not part of the original EXP4 series: **presence share** — the
+mean per-frame detection-class share, straight from `detraw_intersection.parquet`,
+identical regardless of tracker because detection is shared upstream of both.
+It gives pedestrians 17.8%, *lower* than either track-based number (27.1%
+ByteTrack, 19.1% metric-frame) — a genuinely different read, not a tie-breaker
+that resolves in either tracker's favour. See `NUMBERS-CHANGELOG.md`'s
+Revision 2 caveats for the full mechanism and which cut to quote for what.
+
+Determinism: `src/mtrack.py --tag intersection` run twice, independently,
+produced byte-for-byte identical `detections_intersection.parquet` files
+(242,679 rows, 0 diffs) — no unseeded randomness, no seeding needed.

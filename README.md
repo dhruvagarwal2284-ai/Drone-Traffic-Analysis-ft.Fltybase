@@ -9,24 +9,27 @@ them. No annotations, no ground-control points, no map, no fixed infrastructure.
 
 ## Headline results
 
-Intersection video, 120 s window (t = 240–360 s) at 10 fps, **731 road users**,
-**204,632 trajectory samples**, detected with an aerial-pretrained (VisDrone) YOLO and a
-tuned ByteTrack — see "Revision" below; the COCO-detector numbers this superseded are
-archived in `out/exp4/report_intersection_COCO.json` and `NUMBERS-CHANGELOG.md`.
+Intersection video, 120 s window (t = 240–360 s) at 10 fps, **602 road users**,
+**253,972 trajectory samples**, detected with an aerial-pretrained (VisDrone) YOLO and
+tracked with a metric-frame Kalman tracker (`detect.py` + `mtrack.py`) — see "Revision 2"
+below. The ByteTrack numbers this superseded are archived in
+`out/exp5/report_intersection_BYTETRACK.json` and `NUMBERS-CHANGELOG.md`; the older
+COCO-detector numbers before that are in `out/exp4/report_intersection_COCO.json`.
 
 | | |
 |---|---|
-| Modal split | two-wheeler 43.8%, pedestrian 27.1%, car 25.3%, auto-rickshaw 1.8%, truck 1.2%, bus 0.5% |
-| Turning movements | 169 through, 28 left, 24 right, 22 u-turn (243 traversing tracks) |
-| Conflicts | 37 critical, 61 serious, 404 conflict, 1,270 minor |
-| Dominant conflict pairs | two-wheeler↔two-wheeler (175), car↔two-wheeler (173), car↔car (51) |
-| Worst delay | `W→SE` at 5.4 s mean stopped time (best-sampled, n=67); the raw worst movement, `NE→SE` at 51.3 s, rests on only 2 tracks and should not be quoted alone |
+| Modal split (by track) | two-wheeler 46.2%, car 29.1%, pedestrian 19.1%, auto-rickshaw 3.7%, truck 1.5%, bus 0.5% |
+| Modal split (presence share, fragmentation-independent — see "Revision 2") | two-wheeler 52.9%, car 23.9%, pedestrian 17.8%, auto-rickshaw 3.4%, truck 1.6%, bus 0.3% |
+| Turning movements | 186 through, 51 left, 39 right, 29 u-turn (305 traversing tracks, 50.7%) |
+| Conflicts (post re-emergence filter — see "Revision 2") | 27 critical, 40 serious, 295 conflict, 1,001 minor |
+| Dominant conflict pairs | two-wheeler↔two-wheeler (162), car↔two-wheeler (128), car↔car (25) |
+| Worst delay | `W→W` (u-turn) at 13.3 s mean stopped (n=12); the two best-sampled through movements clear fast — `W→SE` 5.6 s (n=77), `SE→W` 2.1 s (n=109) |
 | Inferred signal cycle | 116 s (autocorrelation r = 0.18) |
-| Anomalies | 84 (61 contraflow, 21 stopped in carriageway, 2 hard-braking) |
-| Object attributes | 731 with colour, 675 with measured dimensions (92%), 88.2% achromatic fleet |
-| Per-object kinematics | 731/731 in SI; 99.9% physically plausible, 1 flagged |
-| Map-native | 81.8% of samples matched to OSM links; registration residual 1.79 m |
-| Aggregate | max flow 1,503 veh/h/lane at 78.3 veh/km/lane; max queue 70 m; 0.95% of samples over 40 km/h |
+| Anomalies | 75 (33 contraflow, 42 stopped in carriageway) |
+| Object attributes | 602 with colour, 579 with measured dimensions (96%), 89.7% achromatic fleet |
+| Per-object kinematics | 602/602 in SI; 100% physically plausible, 0 flagged |
+| Map-native | 82.6% of samples matched to OSM links |
+| Aggregate | max flow 1,556 veh/h/lane at 75.0 veh/km/lane; max queue 68 m (leg W) |
 
 ### The three findings worth defending
 
@@ -36,6 +39,8 @@ archived in `out/exp4/report_intersection_COCO.json` and `NUMBERS-CHANGELOG.md`.
    never the road. Independent check: motorcycle length then lands at **1.85 m against
    1.99 m expected** — a quantity the calibration was never fitted to. Without this
    correction every distance, speed and time-to-collision would be substantially wrong.
+   (Unchanged by the tracker re-architecture below: both trackers calibrate from the same
+   shared `detraw_intersection.parquet`, ×1.3822–1.3847 either way.)
 
 2. **The junction is signal-gated; the corridor is not.** The junction's queue index
    autocorrelates at **116 s**, recovered with no controller feed and no signal head in
@@ -44,10 +49,13 @@ archived in `out/exp4/report_intersection_COCO.json` and `NUMBERS-CHANGELOG.md`.
    comes from side friction and a construction narrowing. (Detector-free — unaffected by
    the detector change below.)
 
-3. **Two-wheelers dominate the safety picture**, appearing in 86% of conflict-grade-or-worse
-   interactions (348/404) at 43.8% of traffic. This only becomes visible once road users
-   share a metric frame — and it is *more* pronounced with the class-fix detector than it
-   first appeared with COCO (was ~85% at 45% of traffic).
+3. **Two-wheelers dominate the safety picture**, appearing in ≈86% of conflict-grade-or-worse
+   interactions (310/362 under the metric-frame tracker; was 348/404-ish under ByteTrack) at
+   43.8–46.2% of traffic depending on tracker. The finding survives two independent tracker
+   swaps (COCO ByteTrack → VisDrone ByteTrack → metric-frame Kalman) and a stricter conflict
+   rule that strips a 4.8x re-emergence artefact (see "Revision 2") without moving this
+   share — it is a property of the traffic mix, not of a specific detector, tracker, or
+   conflict-counting rule.
 
 4. **COCO's own scale self-calibration was contaminated by the exact class bug it also
    caused downstream.** `calibrate()` runs on raw pre-merge detector labels, so COCO's
@@ -81,12 +89,59 @@ The COCO option remains available (`config.yaml`'s `detector_coco` block,
 
 ---
 
+## Revision 2 — metric-frame tracker
+
+The numbers above are now from a two-stage pipeline — `src/detect.py`
+(detector-only, unchanged VisDrone weights) → `src/mtrack.py` (per-track
+constant-velocity Kalman filter, association in **ground-plane metres**
+instead of image pixels) — replacing image-space ByteTrack as the default
+tracker. `track.py` (fused detect+ByteTrack) remains available as a
+documented alternative (see Pipeline below). Four experiments, in order:
+
+- **`EXP4A.md`** — Step A: split `track.py`'s fused detect+track into
+  `detect.py` (detector-only) so a future tracker can associate boxes
+  itself. Also tried 2×2 SAHI-style tiling: 1.21x more detections for
+  ~2.4x the compute, with bus/truck tile-seam artefacts — **closed as a
+  negative result**, not adopted.
+- **`EXP4.md`** — Step B: `mtrack.py`, a from-scratch metric-frame tracker
+  (Kalman filter + Hungarian assignment, gated on Mahalanobis distance,
+  costed on class-group distance + footprint-size). A 4-combo knob sweep
+  picked `max_lost_s=6.0`. Verdict: **ADOPT** — duplicate tracks 402→110,
+  traversing tracks 33.2%→52.4%, no physics regression — but flagged two
+  numbers (critical conflicts ×4.8, pedestrian share 27.1%→18.2%) as
+  needing independent QA before publication.
+- **`EXP4-QA.md`** — independent QA of both flags. Found the conflict spike
+  is 81.5% a re-emergence artefact (the RTS-smoothed velocity right where a
+  track exits an occlusion-bridged gap is its least trustworthy sample, and
+  that is exactly the sample PET/TTC scores) and the pedestrian drop is
+  partly the same fragmentation-reduction mechanism already seen for
+  two-wheelers, partly a real class-vote leak (a lone pedestrian detection
+  absorbed into a nearby vehicle track under a purely-spatial gate).
+  Verdict: **ADOPT WITH A CONFLICT POST-FILTER**.
+- **`EXP4-FIX.md`** — implemented both of EXP4-QA's prescriptions: a
+  class-group hard gate in `mtrack.py` (a detection may only match a track
+  in the same group — person / bicycle / {motorcycle, autorickshaw} /
+  {car, bus, truck}) and a `reemerged` trajectory column that
+  `conflicts.py` excludes from PET/TTC candidacy for 2.0s after a track
+  re-emerges from an imputed gap, applied identically to both trackers.
+
+The re-emergence exclusion rule is folded into every conflict number in
+this README, `WRITEUP.md`, and both trackers' outputs — it is a shared
+trajectory-processing rule, not a per-tracker tweak. Full before/after
+figures for every headline number: `NUMBERS-CHANGELOG.md`'s "Revision 2"
+section. The ByteTrack option remains available (`track.py`, see Pipeline)
+for anyone who wants to reproduce the prior run.
+
+---
+
 ## Pipeline
 
 ```
 telemetry.py     demux per-frame DJI telemetry from the mov_text subtitle track
 geometry.py      analytic image -> ground-plane homography from gimbal attitude
-track.py         ffmpeg window cut -> YOLO11x + ByteTrack
+detect.py        ffmpeg window cut -> YOLO detector only, no tracking (default, Step A)
+mtrack.py        metric-frame Kalman tracker: associates detect.py's boxes (default, Step B)
+track.py         fused YOLO11x + ByteTrack, image-space association (documented alternative)
 trajectories.py  metric projection, scale self-calibration, Kalman/RTS smoothing
 conflicts.py     PET + TTC surrogate safety measures
 attributes.py    measured L/W (oriented-dims solve), colour, size class, body type
@@ -98,21 +153,27 @@ congestion.py    detector-free congestion signal over the full recording
 run_analysis.py  end-to-end -> out/report_<tag>.json
 overlay.py       annotated video with trajectory trails
 build_dashboard.py  inject the bundle into the dashboard template
-detect.py        (Step A of next-step #1) detector-only, no tracking
 ```
 
-`detect.py` is the first step of next-step #1 (tracker re-architecture): it splits
-track.py's fused detect+ByteTrack into a detector-only stage, so a future
-metric-frame tracker can associate boxes itself. `python src/detect.py --tag
-<tag> [--tiles 1|2] [--embed]` runs the configured detector per frame over an
-already-cut `out/window_<tag>.mp4` (never re-cuts video) and writes
-`out/detraw_<tag>.parquet` — one row per detection, no `track_id`: `fi`, `t`,
-`cls`, `conf`, `x1,y1,x2,y2` (px), `u_px,v_px` (box-centre px, matching
-trajectories.py's own convention), `x_m,y_m,w_m,h_m` (ground-plane metres, via
-the same `calibrate()`/mid-height projection trajectories.py uses), plus an
-optional 20-float HSV-histogram+size `embed` column with `--embed`. `--tiles 2`
-runs an overlapping 2x2 SAHI-style tile pass merged with per-class NMS
-(`torchvision.ops.batched_nms`, no new dependency). Full results: `EXP4A.md`.
+**Default pipeline (since Revision 2): `detect.py` → `mtrack.py`.** `detect.py`
+runs the configured VisDrone detector per frame over an already-cut
+`out/window_<tag>.mp4` (never re-cuts video) and writes `out/detraw_<tag>.parquet`
+— one row per detection, no `track_id`: `fi`, `t`, `cls`, `conf`, `x1,y1,x2,y2` (px),
+`u_px,v_px` (box-centre px), `x_m,y_m,w_m,h_m` (ground-plane metres via the same
+`calibrate()`/mid-height projection `trajectories.py` uses), plus an optional
+20-float HSV-histogram+size `embed` column with `--embed`. `mtrack.py` then reads
+that parquet and associates boxes into tracks itself, entirely in ground-plane
+metres: a constant-velocity Kalman filter per track, Mahalanobis-gated Hungarian
+assignment costed on class-group distance + footprint-size distance, with a hard
+class-group gate (person / bicycle / {motorcycle, autorickshaw} / {car, bus,
+truck} — a detection may only match a track in the same group) and a growing
+acceptance radius that lets the gate bridge an occlusion by itself, no separate
+buffer-growth schedule needed. Writes `out/detections_<tag>.parquet` in
+`track.py`'s own schema, so every downstream stage runs unchanged. `--tiles 2`
+on `detect.py` runs an overlapping 2×2 SAHI-style tile pass merged with per-class
+NMS — tried and **not adopted** (1.21x more detections for ~2.4x the compute,
+bus/truck tile-seam artefacts; `EXP4A.md`). Full tracker design and knob sweep:
+`EXP4.md`, `EXP4-QA.md`, `EXP4-FIX.md`.
 
 Run:
 
@@ -124,20 +185,29 @@ pip install ultralytics opencv-python numpy pandas pyarrow scipy
 # alternative and licence details)
 curl -L -o models/visdrone-yolov11s.pt "https://huggingface.co/dronefreak/visdrone-yolov11s/resolve/main/best.pt"
 
-python src/track.py        --tag intersection --t0 240 --dur 120 --fps 10
+python src/detect.py       --tag intersection --t0 240 --dur 120 --fps 10
+python src/mtrack.py       --tag intersection
 python src/congestion.py   --video Intersection_Merged-002 --tag intersection
 python src/run_analysis.py --tag intersection --t0 240 --fps 10
 # run order above no longer matters: run_analysis.py computes attributes itself
 # (one extra video pass) if out/attributes_<tag>.parquet doesn't exist yet.
-python run_attrs.py                      # object attributes (one video pass)
-python run_geo.py                        # map-native: georeference + map-match
+python run_attrs.py intersection         # object attributes (one video pass)
+python run_geo.py intersection           # map-native: georeference + map-match
 python src/build_dashboard.py intersection
 python src/overlay.py      --tag intersection --seconds 60
 ```
 
-`track.py`'s defaults now point at the VisDrone weight + tuned tracker
-(`trackers/bytetrack_buf90.yaml`) above. To reproduce the original COCO run
-instead, pass `--weights yolo11x.pt --tracker bytetrack.yaml` explicitly (see
+**To reproduce the prior ByteTrack default** instead, run `track.py` in place of
+`detect.py` + `mtrack.py` — it writes the same `out/detections_<tag>.parquet`
+schema, so every step from `congestion.py` onward is identical either way:
+
+```bash
+python src/track.py        --tag intersection --t0 240 --dur 120 --fps 10
+```
+
+`track.py`'s own defaults still point at the VisDrone weight + tuned tracker
+(`trackers/bytetrack_buf90.yaml`). To reproduce the original COCO run instead,
+pass `--weights yolo11x.pt --tracker bytetrack.yaml` explicitly (see
 `config.yaml`'s `detector_coco` block).
 
 The RTX 5050 is Blackwell (`sm_120`) and needs CUDA 12.8 wheels — the default cu121
@@ -166,7 +236,7 @@ One row per (track, frame). This is the reusable data product; every figure deri
 
 ## Object schema — `out/objects_intersection.parquet`
 
-One row per road user (731 × 31): identity, kinematics, movement and interactions joined.
+One row per road user (602 × 31): identity, kinematics, movement and interactions joined.
 
 | group | columns |
 |---|---|
@@ -198,28 +268,48 @@ is physics — each of these could have failed:
 - `|accel|` < 4 m/s² for **100%** of samples; **no** speeds above 100 km/h
 - median car footprint = 4.0 m by construction; **motorcycle then measures 1.85 m vs
   1.99 m expected** — an independent check
-- 10.7% of positions interpolated through occlusion, flagged in the data
-- 402 duplicate tracks detected and removed
+- 22.3% of positions interpolated through occlusion, flagged in the data (up from 10.7%
+  under ByteTrack — the metric-frame tracker bridges occlusion continuously instead of
+  dying and restarting, so more rows fall inside a bridged gap; see Revision 2)
+- 180 duplicate tracks detected and removed (down from 402)
+- `src/mtrack.py --tag intersection` run twice independently: 0/242,679 detection rows
+  differ — deterministic, no seeding needed
 
 ## Known limits
 
-- **Conflict counts are an upper bound.** Residual ID fragmentation inflates them; the
-  spatial pattern and class composition are the robust reads, not the absolute rate.
-- **Only 243 of 731 tracks traversed the scene** — 67% are fragments, caused by the tree
-  occluding the junction core, by image-space association, and now also by VisDrone's
-  denser per-frame detection field giving the tracker more boxes to confuse (EXP3 cut
-  this from 80% to 67% by tuning ByteTrack's buffer/match threshold, but did not
-  eliminate it — see next steps #1).
-- **OSM map-match rate dropped from 96.6% to 81.8%** when the class fix was adopted.
-  This is a detection-coverage problem, not an association one (per-sample registration
-  residual is *better*, 1.79 m vs 1.97 m): VisDrone's denser field puts more boxes in
-  places (verges, parked two-wheelers, pavement) outside the road network's 20 m buffer.
-  Tuning the tracker did not move this number (EXP3: 81.8–82.6% across four tracker
-  configs) — flow/density/queue figures downstream of map-matching should be read with
-  that in mind.
-- **Auto-rickshaws** are now separable via the oriented-dimension solve (2.58 m vs 1.45 m),
-  reversing an earlier limitation — but body type is inferred from measured size, not read
-  from the vehicle, so individual calls are less certain than the aggregate.
+- **Conflict counts are still an approximation, now with a stated correction rule.**
+  A re-emergence exclusion (Revision 2) removes the single biggest artefact (a track's
+  least-trustworthy sample, right where it exits an occlusion-bridged gap), but residual
+  ID fragmentation and PET/TTC's own exposure sensitivity remain — the spatial pattern
+  and class composition are the robust reads, not the absolute rate.
+- **305 of 602 tracks traversed the scene (50.7%)** — improved from 33.2% (previously
+  from 67% fragments down to 49.3%) by the tracker re-architecture (Revision 2): metric-
+  frame association with a growing Kalman gate bridges the tree's occlusion instead of
+  losing the track and restarting it. Not eliminated — the class-group hard gate itself
+  costs ~1.7 points back by freeing previously-absorbed detections into short-lived
+  fragments rather than vehicle tracks (`EXP4-FIX.md`).
+- **OSM map-match rate sits at 82.6%**, essentially unchanged from ByteTrack's 81.8%
+  (was 96.6% under COCO). Confirmed across two independent trackers now that this is a
+  **detection-coverage** problem, not an association one: VisDrone's denser field puts
+  more boxes in places (verges, parked two-wheelers, pavement) outside the road
+  network's 20 m buffer, and no tracker choice moves it by more than a point (EXP3: four
+  ByteTrack configs, 81.8–82.6%; EXP4: metric-frame tracker, 81.3%; this run: 82.6%).
+  Fixing this needs a road-buffer or detection-filtering change, not a tracking one —
+  see next steps.
+- **Pedestrian modal split is now a three-way, not two-way, comparison — and it doesn't
+  resolve cleanly.** By-track share moved 27.1%→19.1% across the tracker swap; a third,
+  fragmentation-independent cut (mean per-frame detection-class share, "presence share")
+  gives 17.8% — *lower* than either track-based number, because a few fast-transiting
+  two-wheelers generate more total detection-frames than fewer, longer-lingering
+  pedestrians. Track share and presence share answer different questions (see
+  `NUMBERS-CHANGELOG.md` Revision 2 for which to quote when). Separately, `EXP4-FIX.md`
+  found a real, structural leak: the tracker's class-group gate stops a stray pedestrian
+  detection being absorbed into a vehicle track (155/678 raw tracks affected pre-fix),
+  but the freed detections are often too short-lived to confirm as their own track —
+  fixing this needs better pedestrian detection recall, not a tracking-side change.
+- **Auto-rickshaws** are separable via the oriented-dimension solve (2.05–2.58 m vs
+  1.45 m two-wheeler) and VisDrone's own `autorickshaw` class — but body type is still
+  inferred from measured size for ambiguous cases, not read from the vehicle.
 - **Licence plates and make/model are not achievable.** An Indian plate is 15.3 × 3.7 px
   here, giving 2.0 px character height against ~16 px for OCR — an 8× shortfall — and at
   −63° pitch the plate surfaces face away from the camera entirely. Would need ~13 m
@@ -227,13 +317,7 @@ is physics — each of these could have failed:
 - **Vehicle width is ~30% over-measured** (ill-conditioned half of the L/W solve).
 - **Peak acceleration needs the percentile columns.** Smoother edge transients inflate the
   raw per-object maximum; use `a_p95_ms2` / `a_p05_ms2`, and the `kinematics_plausible`
-  flag (1 of 731 objects fails it).
-- **Pedestrian counts were a floor under COCO, and still likely are.** Adopting the
-  VisDrone class fix alone (no tiling) already lifted the pedestrian count from 134 to
-  198 (19.5%→27.1% share) — most of the undercounting EXP2 attributed to class confusion.
-  Tiled inference was previously measured at 1.7–1.9× more road users and 5–6× more
-  pedestrians than full-frame COCO; whether tiling still adds meaningfully on top of
-  VisDrone hasn't been re-tested.
+  flag (0 of 602 objects fail it this run).
 - **The cycle estimate is indicative**, not a measured signal plan (r = 0.18).
 - **Multi_Road is deliberately not tracked.** At 18.5° gimbal pitch a motorcycle is 8 px
   across; trajectories there would be fabricated precision. It gets the detector-free
@@ -241,17 +325,29 @@ is physics — each of these could have failed:
 
 ## Next steps, in priority order
 
-1. **Re-architect the tracker** — decouple detection from tracking (`boxmot`) so tiled
-   inference is possible at all, and associate in the metric frame with appearance re-ID
-   across occlusion. This is what fixes the remaining 67% fragmentation and the OSM
-   match-rate drop (81.8% vs 96.6%); tuning the tracker's built-in knobs (EXP3) already
-   captured the cheap gains available without doing this. *Promoted from #2 to #1*: it
-   is now a prerequisite for the flow/queue/match-rate numbers, not just a fragmentation
-   fix — see "Revision" below.
-2. **SAHI tiling** — measured 1.7–1.9× more road users on COCO, but **6× slower**, not
-   faster. VisDrone alone already recovers much of the pedestrian undercount tiling was
-   aimed at (known limits, above); worth re-measuring whether tiling still earns its cost
-   on top of it.
+1. **Map-match road-buffer / detection filtering** for the ~81–83% OSM rate — the
+   detection-coverage gap that two tracker re-architectures now confirm a tracker cannot
+   fix. Either widen the road network's registration buffer or filter detections by
+   plausible road-surface location before map-matching.
+2. **Pedestrian detection recall.** The class-group gate (Revision 2) stopped the
+   pedestrian-into-vehicle class leak; it can't manufacture confirmed pedestrian tracks
+   out of detections too short-lived to hit `min_hits=3` on their own. Needs a
+   detection-side fix, not a tracking-side one.
+3. **A ReID appearance network for `mtrack.py`.** The current appearance cue is
+   footprint size (`w_m,h_m`) — cheap and already earns its keep (ablated: turning it
+   off raises duplicates 110→153), but cannot distinguish two similar-sized, same-class
+   objects converging near-simultaneously. `detect.py --embed` already emits a
+   20-float HSV+size vector as a hook for a `lambda_embed` cost term; unused so far
+   because the tracker's default input lacks it (`EXP4.md`).
 
 ~~Aerial-pretrained weights (VisDrone/DOTA)~~ — **done**, see "Revision" below and
 `EXP1.md`–`EXP3.md`.
+
+~~Re-architect the tracker (decouple detection, associate in the metric frame,
+re-emergence conflict filter)~~ — **done**, see "Revision 2" above and
+`EXP4A.md`–`EXP4-FIX.md`.
+
+~~SAHI tiling~~ — **closed, negative result**: 1.21× more detections for ~2.4× the
+compute on top of VisDrone (vs 1.7–1.9× measured on COCO), with bus/truck tile-seam
+artefacts (`EXP4A.md`). Not adopted; not planned to be revisited unless the detector
+itself changes again.
