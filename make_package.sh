@@ -24,7 +24,8 @@ cp out/objects_intersection.parquet      demo/objects.parquet
 
 STAGE=$(mktemp -d)/traffic-analysis-agent
 mkdir -p "$STAGE"
-cp -r src demo notebooks trackers "$STAGE"/
+cp -r src demo notebooks trackers tests "$STAGE"/
+rm -rf "$STAGE"/tests/__pycache__
 mkdir -p "$STAGE"/models
 cp models/README.md "$STAGE"/models/   # weights excluded by design (see models/README.md)
 
