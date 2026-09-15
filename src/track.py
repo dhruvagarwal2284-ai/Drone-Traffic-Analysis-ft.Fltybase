@@ -21,6 +21,20 @@ import pandas as pd
 # in trajectories.py, which recovers it from metric footprint size.
 COCO_KEEP = [0, 1, 2, 3, 5, 7]  # person, bicycle, car, motorcycle, bus, truck
 
+# VisDrone (dronefreak/visdrone-yolov11s, EXP1.md): 11 classes, id 10 'others'
+# dropped. Selected automatically when 'visdrone' is in the weights filename --
+# mapped once here to this repo's class vocabulary; tricycle/awning-tricycle
+# become a new 'autorickshaw' class (one-line addition in trajectories.py's
+# CLASS_HEIGHT/PCU and conflicts.py's RADIUS; attributes.py's body-type bands
+# already had an 'auto-rickshaw' size band, unchanged).
+VISDRONE_KEEP = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+VISDRONE_MAP = {
+    "pedestrian": "person", "people": "person", "bicycle": "bicycle",
+    "car": "car", "van": "car", "truck": "truck", "bus": "bus",
+    "motor": "motorcycle",
+    "tricycle": "autorickshaw", "awning-tricycle": "autorickshaw",
+}
+
 
 def build_window(video: Path, t0: float, dur: float, fps: float, dest: Path) -> Path:
     """Cut [t0, t0+dur) at `fps`, keeping native 4K resolution."""
@@ -52,6 +66,8 @@ def run(window_mp4: Path, weights: str = "yolo11x.pt", imgsz: int = 1920,
 
     model = YOLO(weights)
     names = model.names
+    is_visdrone = "visdrone" in str(weights).lower()
+    keep = VISDRONE_KEEP if is_visdrone else COCO_KEEP
 
     rows = []
     stream = model.track(
@@ -59,7 +75,7 @@ def run(window_mp4: Path, weights: str = "yolo11x.pt", imgsz: int = 1920,
         stream=True,
         persist=True,
         tracker="bytetrack.yaml",
-        classes=COCO_KEEP,
+        classes=keep,
         imgsz=imgsz,
         conf=conf,
         iou=0.5,
@@ -78,12 +94,13 @@ def run(window_mp4: Path, weights: str = "yolo11x.pt", imgsz: int = 1920,
         cls = b.cls.cpu().numpy().astype(int)
         cf = b.conf.cpu().numpy()
         for k in range(len(ids)):
+            raw = names[int(cls[k])]
             rows.append({
                 "fi": fi,
                 "t": t0 + fi / fps,
                 "track_id": int(ids[k]),
                 "cls_id": int(cls[k]),
-                "cls": names[int(cls[k])],
+                "cls": VISDRONE_MAP.get(raw, raw) if is_visdrone else raw,
                 "conf": float(cf[k]),
                 "x1": float(xyxy[k, 0]), "y1": float(xyxy[k, 1]),
                 "x2": float(xyxy[k, 2]), "y2": float(xyxy[k, 3]),
@@ -106,11 +123,17 @@ if __name__ == "__main__":
     ap.add_argument("--weights", default="yolo11x.pt")
     ap.add_argument("--imgsz", type=int, default=1920)
     ap.add_argument("--tag", default="intersection")
+    ap.add_argument("--window", default=None,
+                    help="reuse an existing cut window mp4 instead of re-cutting")
     a = ap.parse_args()
 
-    win = build_window(Path(a.video), a.t0, a.dur, a.fps,
-                       root / "out" / f"window_{a.tag}.mp4")
-    print(f"window -> {win}", flush=True)
+    if a.window:
+        win = Path(a.window)
+        print(f"window -> {win} (reused)", flush=True)
+    else:
+        win = build_window(Path(a.video), a.t0, a.dur, a.fps,
+                           root / "out" / f"window_{a.tag}.mp4")
+        print(f"window -> {win}", flush=True)
 
     df = run(win, a.weights, a.imgsz, t0=a.t0, fps=a.fps)
     dest = root / "out" / f"detections_{a.tag}.parquet"

@@ -38,11 +38,13 @@ COLOUR = {  # BGR
     # fallbacks for detector classes when no body type was solved
     "car": (80, 200, 90), "two_wheeler": (60, 170, 255),
     "person": (90, 90, 250), "motorcycle": (60, 170, 255),
+    "autorickshaw": (60, 240, 240),
 }
 ABBREV = {"two-wheeler": "2W", "auto-rickshaw": "auto", "hatchback": "hatch",
           "sedan": "sedan", "SUV / MUV": "SUV", "van / LCV": "van",
           "bus": "bus", "truck": "truck", "pedestrian": "ped",
-          "two_wheeler": "2W", "car": "car", "person": "ped"}
+          "two_wheeler": "2W", "car": "car", "person": "ped",
+          "autorickshaw": "auto"}
 TRAIL_S = 4.0
 
 

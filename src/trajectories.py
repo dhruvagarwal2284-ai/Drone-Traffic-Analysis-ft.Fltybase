@@ -24,6 +24,7 @@ from geometry import GroundPlane
 CLASS_HEIGHT = {  # full height; we back-project at half of this
     "person": 1.70, "bicycle": 1.20, "car": 1.50,
     "motorcycle": 1.55, "two_wheeler": 1.55, "bus": 3.20, "truck": 3.00,
+    "autorickshaw": 1.80,
 }
 CLASS_SIZE = {  # nominal length x width
     "car": (4.0, 1.8), "bus": (10.5, 2.5), "truck": (7.0, 2.5),
@@ -32,7 +33,7 @@ CLASS_SIZE = {  # nominal length x width
 }
 # passenger-car-unit equivalents (IRC 106 style, Indian mixed traffic)
 PCU = {"car": 1.0, "motorcycle": 0.5, "bicycle": 0.5, "two_wheeler": 0.5,
-       "bus": 3.0, "truck": 3.0, "person": 0.0}
+       "bus": 3.0, "truck": 3.0, "person": 0.0, "autorickshaw": 1.2}
 
 MIN_TRACK_SEC = 1.5
 

@@ -15,6 +15,29 @@ detector:
   classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
   tracker: bytetrack.yaml
 
+# EXP2.md: aerial-pretrained alternative to `detector` above. Not wired to a
+# --profile flag (nothing in this repo parses config.yaml at runtime; every
+# script's CLI defaults just mirror it) -- src/track.py instead auto-selects
+# this class list/map when 'visdrone' appears in --weights. Documented here so
+# the two options stay side by side.
+detector_visdrone:
+  weights: models/visdrone-yolov11s.pt
+  imgsz: 1920
+  conf: 0.20
+  classes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # all but 'others' (10)
+  tracker: bytetrack.yaml
+  class_map:  # VisDrone name -> this repo's class vocabulary
+    pedestrian: person
+    people: person
+    bicycle: bicycle
+    car: car
+    van: car
+    truck: truck
+    bus: bus
+    motor: motorcycle
+    tricycle: autorickshaw
+    awning-tricycle: autorickshaw
+
 camera:                # all read from telemetry; listed here for reference
   width: 3840
   height: 2160

@@ -27,7 +27,8 @@ import pandas as pd
 # register as already touching, which in lane-sharing traffic manufactures
 # thousands of phantom conflicts.
 RADIUS = {"car": 0.95, "two_wheeler": 0.45, "motorcycle": 0.45,
-          "bicycle": 0.40, "person": 0.30, "bus": 1.30, "truck": 1.25}
+          "bicycle": 0.40, "person": 0.30, "bus": 1.30, "truck": 1.25,
+          "autorickshaw": 0.65}
 
 CELL_M = 1.5          # spatial grid for PET
 PET_MAX = 5.0         # seconds; above this it is not an interaction

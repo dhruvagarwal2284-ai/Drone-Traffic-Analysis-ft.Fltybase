@@ -13,7 +13,8 @@ import telemetry as tel  # noqa: E402
 from geometry import GroundPlane  # noqa: E402
 
 ROOT = Path(".")
-TAG, VIDEO, T0 = "intersection", "Intersection_Merged-002", 240.0
+TAG = sys.argv[1] if len(sys.argv) > 1 else "intersection"
+VIDEO, T0 = "Intersection_Merged-002", 240.0
 
 traj = pd.read_parquet(f"out/trajectories_{TAG}.parquet")
 objs = pd.read_parquet(f"out/objects_{TAG}.parquet")
