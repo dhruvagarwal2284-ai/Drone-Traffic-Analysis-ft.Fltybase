@@ -55,6 +55,22 @@ detector_coco:
   classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
   tracker: bytetrack.yaml
 
+# Step B of the tracker re-architecture (EXP4.md): metric-frame association
+# (src/mtrack.py) on top of Step A's detector-only stage (src/detect.py),
+# replacing image-space ByteTrack above. Same "documentation only" status as
+# detector: below -- nothing in this repo parses config.yaml at runtime;
+# mtrack.py's own CLI defaults mirror this block.
+mtracker:
+  input: out/detraw_intersection.parquet   # detect.py --tiles 1 output (tiled variant not used, see EXP4A.md)
+  max_lost_s: 6.0      # occlusion buffer; the tree occludes the junction core for a few seconds
+  min_hits: 3           # consecutive matched frames needed to confirm a new track
+  gate_chi2: 9.21        # Mahalanobis gate (2 dof, 99%); grows on its own via the KF covariance while a track is unmatched
+  lambda_cls: 1.0        # class-mismatch cost weight (ordinal group distance: person/two_wheeler/car-like/heavy)
+  lambda_app: 0.5        # size-mismatch cost weight -- w_m,h_m footprint distance stands in for the (unused here) HSV embed
+  conf_high: 0.5         # ByteTrack-style two-stage split: high-conf detections match first, then low-conf mop up
+  q: 1.5                 # process noise, accel std m/s^2 (same as trajectories.py's smoother)
+  r: 0.35                # measurement noise, position std m (same as trajectories.py's smoother)
+
 camera:                # all read from telemetry; listed here for reference
   width: 3840
   height: 2160
