@@ -1,0 +1,10 @@
+# ByteTrack, track_buffer doubled (30 -> 60 @ 10fps = 6s occlusion tolerance)
+# to fight VisDrone's denser per-frame detections re-acquiring under a new id
+# after brief occlusion. See EXP3.md.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 60
+match_thresh: 0.8
+fuse_score: True

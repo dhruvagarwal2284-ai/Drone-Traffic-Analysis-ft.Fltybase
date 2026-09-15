@@ -1,0 +1,10 @@
+# ByteTrack, track_buffer tripled (30 -> 90 @ 10fps = 9s) and match_thresh
+# raised (stricter IoU association) to see if a longer lost-track memory plus
+# tighter matching cuts fragmentation further than buf60. See EXP3.md.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 90
+match_thresh: 0.9
+fuse_score: True

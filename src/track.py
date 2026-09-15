@@ -60,7 +60,7 @@ def build_window(video: Path, t0: float, dur: float, fps: float, dest: Path) -> 
 
 def run(window_mp4: Path, weights: str = "yolo11x.pt", imgsz: int = 1920,
         conf: float = 0.20, t0: float = 0.0, fps: float = 10.0,
-        device: str = "0") -> pd.DataFrame:
+        device: str = "0", tracker: str = "bytetrack.yaml") -> pd.DataFrame:
     """Track through the window. Returns one row per detection per frame."""
     from ultralytics import YOLO
 
@@ -74,7 +74,7 @@ def run(window_mp4: Path, weights: str = "yolo11x.pt", imgsz: int = 1920,
         source=str(window_mp4),
         stream=True,
         persist=True,
-        tracker="bytetrack.yaml",
+        tracker=tracker,
         classes=keep,
         imgsz=imgsz,
         conf=conf,
@@ -125,6 +125,8 @@ if __name__ == "__main__":
     ap.add_argument("--tag", default="intersection")
     ap.add_argument("--window", default=None,
                     help="reuse an existing cut window mp4 instead of re-cutting")
+    ap.add_argument("--tracker", default="bytetrack.yaml",
+                    help="tracker yaml (ultralytics built-in name or path to a custom one)")
     a = ap.parse_args()
 
     if a.window:
@@ -135,7 +137,7 @@ if __name__ == "__main__":
                            root / "out" / f"window_{a.tag}.mp4")
         print(f"window -> {win}", flush=True)
 
-    df = run(win, a.weights, a.imgsz, t0=a.t0, fps=a.fps)
+    df = run(win, a.weights, a.imgsz, t0=a.t0, fps=a.fps, tracker=a.tracker)
     dest = root / "out" / f"detections_{a.tag}.parquet"
     df.to_parquet(dest, index=False)
     print(f"\n{len(df)} detections, {df.track_id.nunique()} tracks -> {dest}")

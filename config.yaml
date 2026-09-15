@@ -25,7 +25,17 @@ detector_visdrone:
   imgsz: 1920
   conf: 0.20
   classes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]   # all but 'others' (10)
-  tracker: bytetrack.yaml
+  # EXP3.md: cheapest fix for VisDrone's tracker fragmentation (80->541 dup
+  # tracks, 96.6%->82.7% OSM match vs COCO). Winner of 4 ultralytics-builtin
+  # tracker configs tried: bytetrack with track_buffer 30->90 (9s @ 10fps) and
+  # match_thresh 0.8->0.9 -- dup tracks 541->402 (-26%), traversing tracks
+  # 26.2%->33.2%. BoT-SORT (with/without ReID) did not beat plain ByteTrack
+  # with these knobs; ReID (model: auto, no trained aerial weights) made
+  # duplicates worse (541->659). OSM match rate did not improve with any
+  # tracker variant (81.8-82.6% across the board) -- that drop is a detection-
+  # coverage issue (denser boxes off the road buffer), not an ID-association
+  # one, so it needs the tracker re-architecture next-step, not a knob tweak.
+  tracker: trackers/bytetrack_buf90.yaml
   class_map:  # VisDrone name -> this repo's class vocabulary
     pedestrian: person
     people: person
