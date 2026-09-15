@@ -98,7 +98,21 @@ congestion.py    detector-free congestion signal over the full recording
 run_analysis.py  end-to-end -> out/report_<tag>.json
 overlay.py       annotated video with trajectory trails
 build_dashboard.py  inject the bundle into the dashboard template
+detect.py        (Step A of next-step #1) detector-only, no tracking
 ```
+
+`detect.py` is the first step of next-step #1 (tracker re-architecture): it splits
+track.py's fused detect+ByteTrack into a detector-only stage, so a future
+metric-frame tracker can associate boxes itself. `python src/detect.py --tag
+<tag> [--tiles 1|2] [--embed]` runs the configured detector per frame over an
+already-cut `out/window_<tag>.mp4` (never re-cuts video) and writes
+`out/detraw_<tag>.parquet` — one row per detection, no `track_id`: `fi`, `t`,
+`cls`, `conf`, `x1,y1,x2,y2` (px), `u_px,v_px` (box-centre px, matching
+trajectories.py's own convention), `x_m,y_m,w_m,h_m` (ground-plane metres, via
+the same `calibrate()`/mid-height projection trajectories.py uses), plus an
+optional 20-float HSV-histogram+size `embed` column with `--embed`. `--tiles 2`
+runs an overlapping 2x2 SAHI-style tile pass merged with per-class NMS
+(`torchvision.ops.batched_nms`, no new dependency). Full results: `EXP4A.md`.
 
 Run:
 
