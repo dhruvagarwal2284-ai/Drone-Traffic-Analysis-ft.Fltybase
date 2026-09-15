@@ -47,7 +47,7 @@ def _radii(cls: pd.Series) -> np.ndarray:
 
 def pet(traj: pd.DataFrame) -> pd.DataFrame:
     """Minimum PET per crossing track pair."""
-    d = traj[(~traj.imputed) & (np.hypot(traj.vx, traj.vy) > MOVING_MS)]
+    d = traj[(~traj.imputed) & (~traj.reemerged) & (np.hypot(traj.vx, traj.vy) > MOVING_MS)]
     if d.empty:
         return pd.DataFrame()
 
@@ -105,7 +105,7 @@ def pet(traj: pd.DataFrame) -> pd.DataFrame:
 
 def ttc(traj: pd.DataFrame) -> pd.DataFrame:
     """Minimum TTC per pair, scanned frame by frame."""
-    d = traj[(~traj.imputed) & (np.hypot(traj.vx, traj.vy) > MOVING_MS)]
+    d = traj[(~traj.imputed) & (~traj.reemerged) & (np.hypot(traj.vx, traj.vy) > MOVING_MS)]
     best: dict[tuple, dict] = {}
 
     for fi, g in d.groupby("fi", sort=False):

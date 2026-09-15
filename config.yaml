@@ -70,6 +70,12 @@ mtracker:
   conf_high: 0.5         # ByteTrack-style two-stage split: high-conf detections match first, then low-conf mop up
   q: 1.5                 # process noise, accel std m/s^2 (same as trajectories.py's smoother)
   r: 0.35                # measurement noise, position std m (same as trajectories.py's smoother)
+  # EXP4-FIX: hard gate, a detection may only match a track in the same group
+  # -- {person}, {bicycle}, {motorcycle,autorickshaw}, {car,bus,truck}. Stops
+  # the pedestrian-into-vehicle leak the soft lambda_cls cost alone (2.0x
+  # tried, rejected) could not (EXP4-QA.md check 4, EXP4-FIX.md). True by
+  # default; set false to fall back to the old soft-cost-only association.
+  class_hard_gate: true
 
 camera:                # all read from telemetry; listed here for reference
   width: 3840
@@ -88,3 +94,11 @@ conflicts:
   min_cross_angle_deg: 40.0    # below this it is car-following, not a conflict
   min_gap_m: 1.0
   neighbour_radius_m: 30.0
+  # EXP4-FIX: exclude conflict candidates within this many seconds of a track
+  # re-emerging from an imputed (occlusion-bridged) gap -- the RTS-smoothed
+  # velocity right at a gap edge is the track's least trustworthy sample, and
+  # 81.5% of mtrack's raw critical/serious conflicts touched one
+  # (EXP4-QA.md check 2). trajectories.py's `reemerged` column implements the
+  # window; conflicts.py excludes reemerged rows the same way it already
+  # excludes imputed ones.
+  reemerge_s: 2.0

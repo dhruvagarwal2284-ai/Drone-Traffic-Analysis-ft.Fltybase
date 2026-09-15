@@ -46,6 +46,26 @@ CLASS_GROUP = {
     "truck": 3, "bus": 3,
 }
 
+# EXP4-FIX: hard association gate, a detection may only match a track in the
+# same group. Distinct from CLASS_GROUP above -- that ordinal distance is a
+# soft cost that only ever *discourages* a mismatch (EXP4-QA.md check 4:
+# 155/678 raw confirmed tracks absorbed a stray 'person' detection into a
+# vehicle track anyway, because the spatially-cheapest legal match still won).
+# person and bicycle each stay their own group: EXP4-QA.md's leak evidence is
+# person->vehicle only, none for bicycle<->motorcycle, and test_mtrack.py's
+# own synthetic gap test crosses exactly a motorcycle and a bicycle mid-
+# occlusion -- allowing that bridge risks the very id-swap the gate exists to
+# stop, with no data to justify the penalty. motorcycle+autorickshaw and
+# car+bus+truck merge because within each pair the confusion is a detector
+# labelling wobble on similarly-sized/shaped road users, not a leak across a
+# real behavioural class.
+HARD_GROUP = {
+    "person": "person",
+    "bicycle": "bicycle",
+    "motorcycle": "two_wheeler_motor", "autorickshaw": "two_wheeler_motor",
+    "car": "four_wheeler", "bus": "four_wheeler", "truck": "four_wheeler",
+}
+
 DEFAULT_CFG = dict(
     max_lost_frames=60,   # 6 s @ 10 fps
     min_hits=3,
@@ -55,6 +75,7 @@ DEFAULT_CFG = dict(
     conf_high=0.5,
     q=1.5,                 # process noise, accel std, m/s^2 (matches trajectories.py)
     r=0.35,                # measurement noise, position std, m (matches trajectories.py)
+    class_hard_gate=True,   # EXP4-FIX: reject cross-group matches outright, see HARD_GROUP
 )
 
 
@@ -150,6 +171,10 @@ def _associate(tracks: dict, cand_ids: list, dets: pd.DataFrame, H, R, cfg: dict
         diff = det_xy - pred
         d2 = np.einsum("ij,jk,ik->i", diff, Sinv, diff)
         feasible = d2 < cfg["gate_chi2"]
+        if cfg.get("class_hard_gate", True):
+            same_group = np.array([HARD_GROUP.get(tr.cls, tr.cls) == HARD_GROUP.get(c, c)
+                                    for c in det_cls])
+            feasible &= same_group
         if not feasible.any():
             continue
         pos_dist = np.linalg.norm(diff, axis=1)
@@ -248,12 +273,15 @@ if __name__ == "__main__":
     ap.add_argument("--conf-high", type=float, default=0.5)
     ap.add_argument("--q", type=float, default=1.5)
     ap.add_argument("--r", type=float, default=0.35)
+    ap.add_argument("--class-hard-gate", type=int, default=1, choices=[0, 1],
+                    help="EXP4-FIX: 1=reject cross-group matches outright (default), 0=soft cost only")
     a = ap.parse_args()
 
     cfg = dict(
         max_lost_frames=round(a.max_lost_s * a.fps), min_hits=a.min_hits,
         gate_chi2=a.gate_chi2, lambda_cls=a.lambda_cls, lambda_app=a.lambda_app,
         conf_high=a.conf_high, q=a.q, r=a.r,
+        class_hard_gate=bool(a.class_hard_gate),
     )
 
     det = pd.read_parquet(a.src)

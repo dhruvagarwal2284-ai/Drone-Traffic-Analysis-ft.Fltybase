@@ -36,6 +36,7 @@ PCU = {"car": 1.0, "motorcycle": 0.5, "bicycle": 0.5, "two_wheeler": 0.5,
        "bus": 3.0, "truck": 3.0, "person": 0.0, "autorickshaw": 1.2}
 
 MIN_TRACK_SEC = 1.5
+REEMERGE_S = 2.0  # EXP4-FIX: `reemerged` window after an imputed gap ends
 
 
 # --------------------------------------------------------------------------
@@ -250,6 +251,14 @@ def build(detections: pd.DataFrame, gp: GroundPlane, fps: float) -> tuple[pd.Dat
         speed = np.linalg.norm(vel, axis=1)
         acc = np.gradient(speed, dt)
 
+        # EXP4-FIX: flag samples within REEMERGE_S after an imputed run ends.
+        # mask[0] is always True (idx starts at the track's own first real
+        # row), so mask[1:] & ~mask[:-1] finds only genuine gap-end frames.
+        reemerged = np.zeros(len(mask), dtype=bool)
+        win = max(1, round(REEMERGE_S * fps))
+        for e in np.flatnonzero(mask[1:] & ~mask[:-1]) + 1:
+            reemerged[e:e + win] = True
+
         out.append(pd.DataFrame({
             "fi": idx,
             "t": gi["t"].to_numpy(dtype=float),
@@ -265,6 +274,7 @@ def build(detections: pd.DataFrame, gp: GroundPlane, fps: float) -> tuple[pd.Dat
             "u_px": (gi["x1"].to_numpy() + gi["x2"].to_numpy()) / 2.0,
             "v_px": (gi["y1"].to_numpy() + gi["y2"].to_numpy()) / 2.0,
             "imputed": ~mask,
+            "reemerged": reemerged,
         }))
 
     traj = pd.concat(out, ignore_index=True)

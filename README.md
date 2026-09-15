@@ -161,6 +161,7 @@ One row per (track, frame). This is the reusable data product; every figure deri
 | `extent_m` | longer ground-plane footprint side |
 | `u_px`, `v_px` | source pixel location (for clip export / overlay) |
 | `imputed` | true where the position was interpolated through occlusion |
+| `reemerged` | true for samples within `reemerge_s` (default 2.0 s) after an imputed run ends -- the RTS-smoothed velocity is least trustworthy right at a gap edge, so `conflicts.py` excludes these the same way it excludes `imputed` rows (EXP4-FIX.md) |
 | `pcu` | passenger-car-unit weight |
 
 ## Object schema — `out/objects_intersection.parquet`
