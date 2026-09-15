@@ -120,13 +120,14 @@ if __name__ == "__main__":
     ap.add_argument("--t0", type=float, default=240.0)
     ap.add_argument("--dur", type=float, default=120.0)
     ap.add_argument("--fps", type=float, default=10.0)
-    ap.add_argument("--weights", default="yolo11x.pt")
+    ap.add_argument("--weights", default="models/visdrone-yolov11s.pt")
     ap.add_argument("--imgsz", type=int, default=1920)
     ap.add_argument("--tag", default="intersection")
     ap.add_argument("--window", default=None,
                     help="reuse an existing cut window mp4 instead of re-cutting")
-    ap.add_argument("--tracker", default="bytetrack.yaml",
-                    help="tracker yaml (ultralytics built-in name or path to a custom one)")
+    ap.add_argument("--tracker", default="trackers/bytetrack_buf90.yaml",
+                    help="tracker yaml (ultralytics built-in name or path to a custom one); "
+                         "use bytetrack.yaml with --weights yolo11x.pt for the COCO path")
     a = ap.parse_args()
 
     if a.window:

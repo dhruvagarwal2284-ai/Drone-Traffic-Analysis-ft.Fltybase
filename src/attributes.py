@@ -141,8 +141,9 @@ def grey_world_gains(frame: np.ndarray, boxes: np.ndarray | None = None) -> np.n
     evening light on wet asphalt so that colour names mean something.
     """
     h, w = frame.shape[:2]
-    ys = np.random.randint(0, h, 4000)
-    xs = np.random.randint(0, w, 4000)
+    rng = np.random.default_rng(0)  # fixed seed: makes colour/hex reproducible across reruns
+    ys = rng.integers(0, h, 4000)
+    xs = rng.integers(0, w, 4000)
     keep = np.ones(len(ys), bool)
     if boxes is not None and len(boxes):
         for x1, y1, x2, y2 in boxes:

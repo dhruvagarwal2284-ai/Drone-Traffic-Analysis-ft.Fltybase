@@ -8,19 +8,15 @@ window:
   dur_s: 120.0
   fps: 10.0          # 0.1 s resolution; ample for PET/TTC
 
+# Default since EXP1-3 (branch `visdrone`): aerial-pretrained VisDrone
+# detector + a tuned ByteTrack, replacing the COCO default below. Adopted
+# because COCO routinely calls an overhead two-wheeler a car (EXP1.md) --
+# see EXP2.md for the full before/after and EXP3.md for the tracker tuning.
+# Not wired to a --profile flag (nothing in this repo parses config.yaml at
+# runtime); src/track.py's own CLI defaults mirror this block, and it
+# auto-selects the class list/map below whenever 'visdrone' appears in
+# --weights.
 detector:
-  weights: yolo11x.pt
-  imgsz: 1920
-  conf: 0.20
-  classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
-  tracker: bytetrack.yaml
-
-# EXP2.md: aerial-pretrained alternative to `detector` above. Not wired to a
-# --profile flag (nothing in this repo parses config.yaml at runtime; every
-# script's CLI defaults just mirror it) -- src/track.py instead auto-selects
-# this class list/map when 'visdrone' appears in --weights. Documented here so
-# the two options stay side by side.
-detector_visdrone:
   weights: models/visdrone-yolov11s.pt
   imgsz: 1920
   conf: 0.20
@@ -47,6 +43,17 @@ detector_visdrone:
     motor: motorcycle
     tricycle: autorickshaw
     awning-tricycle: autorickshaw
+
+# COCO option, kept selectable: --weights yolo11x.pt --tracker bytetrack.yaml.
+# Superseded as the default because its scale self-calibration is quietly
+# contaminated by the same two-wheeler-called-car bug (EXP2.md, observation 1)
+# -- car footprint 2.84m (COCO, contaminated) vs 3.11m (VisDrone, clean).
+detector_coco:
+  weights: yolo11x.pt
+  imgsz: 1920
+  conf: 0.20
+  classes: [0, 1, 2, 3, 5, 7]   # person, bicycle, car, motorcycle, bus, truck
+  tracker: bytetrack.yaml
 
 camera:                # all read from telemetry; listed here for reference
   width: 3840
