@@ -17,7 +17,7 @@ mkdir -p "$STAGE"
 cp -r src demo models notebooks "$STAGE"/
 
 cp README.md WRITEUP.md requirements.txt config.yaml run_attrs.py run_geo.py make_package.sh "$STAGE"/
-mkdir -p "$STAGE"/demo/geojson && cp out/geojson/*.geojson "$STAGE"/demo/geojson/ 2>/dev/null || true
+mkdir -p "$STAGE"/demo/geojson && cp out/geojson/intersection/*.geojson "$STAGE"/demo/geojson/ 2>/dev/null || true
 rm -rf "$STAGE"/src/__pycache__
 
 powershell -NoProfile -Command \

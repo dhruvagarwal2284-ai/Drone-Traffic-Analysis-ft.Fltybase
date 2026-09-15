@@ -108,7 +108,18 @@ def main(tag="intersection", video="Intersection_Merged-002",
 
     print("object-level attributes ...", flush=True)
     ap = out / f"attributes_{tag}.parquet"
-    attrs = pd.read_parquet(ap) if ap.exists() else None
+    if ap.exists():
+        attrs = pd.read_parquet(ap)
+    else:
+        # First pass for a fresh tag: run_attrs.py hasn't been run yet. Compute
+        # attributes here instead of silently shipping zero colour/body-type/dims
+        # coverage (the old bug) -- gp.scale is already calibrated in-memory by
+        # tj.build() above, so this needs no round-trip through report_<tag>.json.
+        print(f"  {ap.name} not found; computing attributes now "
+              f"(one extra video pass, ~1 min) ...", flush=True)
+        det_a = det[det.track_id.isin(traj.track_id.unique())]
+        attrs = attrmod.build(out / f"window_{tag}.mp4", det_a, traj, gp, max_samples=18)
+        attrs.to_parquet(ap, index=False)
     objs = objmod.build(traj, moves, attrs, sev, fps)
     objs.to_parquet(out / f"objects_{tag}.parquet", index=False)
 

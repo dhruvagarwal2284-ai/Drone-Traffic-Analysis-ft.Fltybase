@@ -74,6 +74,8 @@ pip install ultralytics opencv-python numpy pandas pyarrow scipy
 python src/track.py        --tag intersection --t0 240 --dur 120 --fps 10
 python src/congestion.py   --video Intersection_Merged-002 --tag intersection
 python src/run_analysis.py --tag intersection --t0 240 --fps 10
+# run order above no longer matters: run_analysis.py computes attributes itself
+# (one extra video pass) if out/attributes_<tag>.parquet doesn't exist yet.
 python run_attrs.py                      # object attributes (one video pass)
 python run_geo.py                        # map-native: georeference + map-match
 python src/build_dashboard.py intersection

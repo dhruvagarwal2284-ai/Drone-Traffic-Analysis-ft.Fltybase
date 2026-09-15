@@ -77,9 +77,10 @@ exports = {
     "desire_lines": geo.desire_lines_geojson(moves, traj, frame, legs),
     "queues": geo.queues_geojson(queues, legs, frame),
 }
-Path("out/geojson").mkdir(exist_ok=True)
+geodir = Path(f"out/geojson/{TAG}")
+geodir.mkdir(parents=True, exist_ok=True)
 for k, v in exports.items():
-    p = Path(f"out/geojson/{k}.geojson")
+    p = geodir / f"{k}.geojson"
     p.write_text(json.dumps(v), encoding="utf-8")
     print(f"  {k:14s} {len(v['features']):4d} features -> {p} ({p.stat().st_size/1024:.0f} KB)")
 
@@ -101,5 +102,5 @@ bundle = {
     "queues_geo": exports["queues"],
 }
 Path(f"out/mapnative_{TAG}.json").write_text(json.dumps(bundle), encoding="utf-8")
-np.save("out/geo_shift.npy", shift)
+np.save(f"out/geo_shift_{TAG}.npy", shift)
 print("\n-> out/mapnative_%s.json" % TAG)
