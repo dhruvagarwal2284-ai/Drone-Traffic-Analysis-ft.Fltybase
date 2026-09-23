@@ -263,7 +263,12 @@ def build(detections: pd.DataFrame, gp: GroundPlane, fps: float) -> tuple[pd.Dat
             "fi": idx,
             "t": gi["t"].to_numpy(dtype=float),
             "track_id": tid,
-            "cls": gi["cls"].ffill().bfill().to_numpy(),
+            # One class per road user: the track's majority vote. Forward-
+            # filling the per-frame label let a handful of stray detector
+            # votes (e.g. 4 'motorcycle' frames inside a 450-frame
+            # autorickshaw track) leak a phantom class into every per-sample
+            # aggregate -- speed tables, histograms, lane mixes.
+            "cls": g["cls"].mode().sort_values().iloc[0],
             "conf": gi["conf"].to_numpy(),
             "x_m": pos[:, 0], "y_m": pos[:, 1],
             "vx": vel[:, 0], "vy": vel[:, 1],

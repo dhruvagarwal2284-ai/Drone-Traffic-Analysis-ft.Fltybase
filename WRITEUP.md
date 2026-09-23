@@ -28,9 +28,9 @@ user's complete path is captured natively, and no fixed installation is required
 ```
 Drone video + per-frame telemetry
         ↓
-Detection (YOLO11x)
+Detection (aerial-pretrained YOLO11s, VisDrone classes)          detect.py
         ↓
-Multi-object tracking (ByteTrack)
+Metric-frame tracking (Kalman + Hungarian in ground metres)      mtrack.py
         ↓
 World-coordinate transformation (analytic homography from gimbal attitude)
         ↓
@@ -38,6 +38,9 @@ Trajectory reconstruction (Kalman + RTS smoothing)
         ↓
 Traffic intelligence (conflicts · movements · queues · anomalies)
 ```
+
+_Sections 4–14 describe the original COCO + ByteTrack build and keep its reasoning;
+§15 and §16 record the two revisions that produced the current numbers._
 
 The trajectory table is the product. Everything else is a query against it.
 

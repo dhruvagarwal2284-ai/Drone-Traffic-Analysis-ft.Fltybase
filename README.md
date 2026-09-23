@@ -3,7 +3,9 @@
 Extracts road-user **trajectories** from drone footage and derives traffic insight from
 them. No annotations, no ground-control points, no map, no fixed infrastructure.
 
-**Dashboard:** https://claude.ai/code/artifact/aa34f729-3f04-4df9-8532-842e13016429
+**Dashboard:** open `demo/dashboard.html` in any browser (self-contained; no server). Rebuild with
+`python src/build_dashboard.py intersection`. Interview walkthrough: `INTERVIEW.md`; what changed in
+the final polish pass: `IMPROVEMENTS.md`.
 
 ---
 
@@ -19,13 +21,13 @@ COCO-detector numbers before that are in `out/exp4/report_intersection_COCO.json
 | | |
 |---|---|
 | Modal split (by track) | two-wheeler 46.2%, car 29.1%, pedestrian 19.1%, auto-rickshaw 3.7%, truck 1.5%, bus 0.5% |
-| Modal split (presence share, fragmentation-independent — see "Revision 2") | two-wheeler 52.9%, car 23.9%, pedestrian 17.8%, auto-rickshaw 3.4%, truck 1.6%, bus 0.3% |
+| Modal split (presence share, fragmentation-independent — see "Revision 2") | two-wheeler 52.9%, car 23.9%, pedestrian 17.8%, auto-rickshaw 3.4%, truck 1.6%, bus 0.3% (now in `report.json` as `presence_share_pct`) |
 | Turning movements | 186 through, 51 left, 39 right, 29 u-turn (305 traversing tracks, 50.7%) |
 | Conflicts (post re-emergence filter — see "Revision 2") | 27 critical, 40 serious, 295 conflict, 1,001 minor |
 | Dominant conflict pairs | two-wheeler↔two-wheeler (162), car↔two-wheeler (128), car↔car (25) |
 | Worst delay | `W→W` (u-turn) at 13.3 s mean stopped (n=12); the two best-sampled through movements clear fast — `W→SE` 5.6 s (n=77), `SE→W` 2.1 s (n=109) |
 | Inferred signal cycle | 116 s (autocorrelation r = 0.18) |
-| Anomalies | 75 (33 contraflow, 42 stopped in carriageway) |
+| Anomalies | 75 (33 contraflow, 42 stopped in carriageway), each stamped at the time it happens |
 | Object attributes | 602 with colour, 579 with measured dimensions (96%), 89.7% achromatic fleet |
 | Per-object kinematics | 602/602 in SI; 100% physically plausible, 0 flagged |
 | Map-native | 82.6% of samples matched to OSM links |
@@ -49,8 +51,10 @@ COCO-detector numbers before that are in `out/exp4/report_intersection_COCO.json
    comes from side friction and a construction narrowing. (Detector-free — unaffected by
    the detector change below.)
 
-3. **Two-wheelers dominate the safety picture**, appearing in ≈86% of conflict-grade-or-worse
-   interactions (310/362 under the metric-frame tracker; was 348/404-ish under ByteTrack) at
+3. **Two-wheelers dominate the safety picture**, appearing in ≈89% of conflict-grade-or-worse
+   interactions (323/362 under the metric-frame tracker, now computed directly as
+   `conflicts.two_wheeler_involved` — an earlier "310" summed only the top-10 pair rows;
+   was 348/404-ish under ByteTrack) at
    43.8–46.2% of traffic depending on tracker. The finding survives two independent tracker
    swaps (COCO ByteTrack → VisDrone ByteTrack → metric-frame Kalman) and a stricter conflict
    rule that strips a 4.8x re-emergence artefact (see "Revision 2") without moving this

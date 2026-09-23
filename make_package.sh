@@ -16,7 +16,7 @@ for f in out/clips/*.mp4; do
          -preset veryfast -pix_fmt yuv420p -y "demo/$(basename "$f")"
 done
 
-cp out/dashboard_intersection.html  demo/dashboard.html
+python src/build_dashboard.py intersection --dest demo/dashboard.html --clip-base ""
 cp out/report_intersection.json     demo/report.json
 cp out/trajectories_intersection.parquet demo/trajectories.parquet
 cp out/attributes_intersection.parquet   demo/attributes.parquet
@@ -29,7 +29,7 @@ rm -rf "$STAGE"/tests/__pycache__
 mkdir -p "$STAGE"/models
 cp models/README.md "$STAGE"/models/   # weights excluded by design (see models/README.md)
 
-cp README.md WRITEUP.md NUMBERS-CHANGELOG.md requirements.txt config.yaml run_attrs.py run_geo.py make_package.sh "$STAGE"/
+cp README.md WRITEUP.md NUMBERS-CHANGELOG.md INTERVIEW.md IMPROVEMENTS.md requirements.txt config.yaml run_attrs.py run_geo.py make_package.sh "$STAGE"/
 mkdir -p "$STAGE"/demo/geojson && cp out/geojson/intersection/*.geojson "$STAGE"/demo/geojson/ 2>/dev/null || true
 rm -rf "$STAGE"/src/__pycache__
 

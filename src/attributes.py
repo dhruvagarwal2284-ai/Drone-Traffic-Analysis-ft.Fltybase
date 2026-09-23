@@ -58,11 +58,19 @@ CHROMATIC = [("red", 0, 12), ("orange", 12, 24), ("yellow", 24, 38),
 
 def plate_requirements(char_mm: float = 65.0, need_px: float = 16.0,
                        gsd_cm_px: float = 3.27, height_m: float = 106.6,
-                       focal_35mm: float = 24.0) -> dict:
+                       focal_35mm: float = 24.0,
+                       calibrated_height_m: float | None = None) -> dict:
     """What it would take to actually read a plate from the air.
 
     Reported so the infeasibility is actionable rather than a dead end.
+    `gsd_cm_px`/`height_m` are a reference pair measured once; pass the run's
+    self-calibrated effective height and the GSD is rescaled to it (GSD is
+    linear in height for fixed optics), so the figures track the calibration
+    instead of a hard-coded altitude.
     """
+    if calibrated_height_m:
+        gsd_cm_px = gsd_cm_px * calibrated_height_m / height_m
+        height_m = calibrated_height_m
     have_px = char_mm / (gsd_cm_px * 10.0)
     factor = need_px / have_px
     return {

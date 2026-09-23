@@ -175,6 +175,18 @@ def main(tag="intersection", video="Intersection_Merged-002",
     grade = (sev.groupby("grade", observed=False).size().to_dict()
              if not sev.empty else {})
 
+    # Fragmentation-independent modal split: mean per-frame class share of raw
+    # detections. Track counts depend on how often the tracker splits a road
+    # user; this does not (NUMBERS-CHANGELOG.md, Revision 2, row 2b).
+    presence = {}
+    rp = out / f"detraw_{tag}.parquet"
+    if rp.exists():
+        raw = pd.read_parquet(rp, columns=["fi", "cls"])
+        raw["cls"] = raw.cls.replace({"motorcycle": "two_wheeler", "bicycle": "two_wheeler"})
+        presence = ((raw.groupby("fi").cls.value_counts(normalize=True)
+                        .unstack(fill_value=0).mean() * 100)
+                    .round(1).sort_values(ascending=False).to_dict())
+
     bundle = {
         "meta": {
             "tag": tag, "video": video,
@@ -190,6 +202,7 @@ def main(tag="intersection", video="Intersection_Merged-002",
                  "bearings": [round(b, 1) for b in legs["bearings"]],
                  "centre": [round(v, 2) for v in legs["centre"]]},
         "counts": ins.counts(moves),
+        "presence_share_pct": presence,
         "od": ins.od_matrix(trav).to_dict(),
         "turns": trav.groupby(["turn"]).size().to_dict(),
         "traversing_tracks": int(len(trav)),
@@ -214,13 +227,19 @@ def main(tag="intersection", video="Intersection_Merged-002",
                               .assign(pair=lambda d: d.cls_a + " / " + d.cls_b)
                               .groupby("pair").size().sort_values(ascending=False)
                               .head(10).to_dict()) if not sev.empty else {},
+            # share of conflict-grade-or-worse events (the same three grades
+            # as by_grade) with a two-wheeler on either side
+            "two_wheeler_involved": ({
+                "n": int(((sev.grade != "minor") & ((sev.cls_a == "two_wheeler")
+                                                    | (sev.cls_b == "two_wheeler"))).sum()),
+                "of": int((sev.grade != "minor").sum())} if not sev.empty else {}),
             "heatmap": {"z": H.T.tolist(),
                         "extent": [-70, 70, -70, 70]},
             "clips": clips,
         },
         "anomalies": {"n": int(len(anom)),
                       "by_kind": anom.kind.value_counts().to_dict() if not anom.empty else {},
-                      "items": anom.sort_values("t").head(40) if not anom.empty else []},
+                      "items": anom.sort_values("t") if not anom.empty else []},
         "objects": {
             "n": int(len(objs)),
             "validation": objmod.validate(objs),
@@ -251,7 +270,8 @@ def main(tag="intersection", video="Intersection_Merged-002",
                                "size_class", "L_m", "W_m", "v_mean_kph", "v_max_kph",
                                "a_min_ms2", "distance_m", "movement", "n_conflicts"]
                               if c in objs]],
-            "plate_feasibility": attrmod.plate_requirements(),
+            "plate_feasibility": attrmod.plate_requirements(
+                calibrated_height_m=cal.get("effective_height_m")),
         },
         "aggregate": {
             "speed_field": agg.speed_field(traj),

@@ -198,16 +198,21 @@ def anomalies(traj: pd.DataFrame, cell: float = 6.0) -> pd.DataFrame:
     dt = float(np.median(np.diff(np.sort(traj.t.unique()))))
     ev = []
     for tid, g in d.groupby("track_id"):
+        # Report each event at the moment it happens, not at the track's first
+        # sample -- otherwise every track already present when the window opens
+        # stamps its event at t0 and the anomaly timeline collapses onto one time.
         if g.contraflow.mean() > 0.5 and len(g) > 8:
+            cf = g[g.contraflow]
             ev.append({"track_id": tid, "kind": "contraflow", "cls": g.cls.iloc[0],
-                       "t": float(g.t.iloc[0]),
-                       "x_m": float(g.x_m.mean()), "y_m": float(g.y_m.mean()),
+                       "t": float(cf.t.iloc[0]),
+                       "x_m": float(cf.x_m.mean()), "y_m": float(cf.y_m.mean()),
                        "detail": f"{g.contraflow.mean():.0%} of path against prevailing flow"})
-        stopped = float((g.speed_kph < 1.0).sum()) * dt
+        still = g[g.speed_kph < 1.0]
+        stopped = float(len(still)) * dt
         if stopped > 8.0 and g.speed_kph.max() > 8.0:
             ev.append({"track_id": tid, "kind": "stopped_in_carriageway",
-                       "cls": g.cls.iloc[0], "t": float(g.t.iloc[0]),
-                       "x_m": float(g.x_m.mean()), "y_m": float(g.y_m.mean()),
+                       "cls": g.cls.iloc[0], "t": float(still.t.iloc[0]),
+                       "x_m": float(still.x_m.mean()), "y_m": float(still.y_m.mean()),
                        "detail": f"stationary {stopped:.0f}s mid-scene"})
         if g.accel.min() < HARD_BRAKE:
             i = g.accel.idxmin()
