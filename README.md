@@ -9,6 +9,26 @@ the final polish pass: `IMPROVEMENTS.md`.
 
 ---
 
+## Dashboard preview
+
+**Overview — 602 road users tracked, 1,362 interactions measured, 116 s signal cycle inferred with no controller feed**
+
+![Dashboard overview](docs/img/overview.png)
+
+**Road network discovered from motion alone — no map, no annotation, every line is one road user's path in metres**
+
+![Trajectories on the ground plane](docs/img/network.png)
+
+**Safety conflicts (PET/TTC) — where they concentrate, severity, and the worst interactions ranked**
+
+![Conflict analysis](docs/img/conflicts.png)
+
+**Map-native output — trajectories bound to real OpenStreetMap links (82.6% matched), per-lane metrics**
+
+![OSM-matched movements and per-lane metrics](docs/img/map.png)
+
+---
+
 ## Headline results
 
 Intersection video, 120 s window (t = 240–360 s) at 10 fps, **602 road users**,
